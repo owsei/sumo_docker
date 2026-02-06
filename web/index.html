@@ -4,12 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <title>Cesium Bounding Box to FastAPI</title>
+
+    <!--CESIUM-->
     <script src="https://cesium.com/downloads/cesiumjs/releases/1.105/Build/Cesium/Cesium.js"></script>
     <link href="https://cesium.com/downloads/cesiumjs/releases/1.105/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+    <!--BOOTSTRAP-->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4Q6Gf2aSP4eDXB8Miphtr37CMZZQ5oXLH2yaXMJ2w8e2ZtHTl7GptT4jmndRuHDT" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js" integrity="sha384-j1CDi7MgGQ12Z7Qab0qlWQ/Qqz24Gc6BM0thvEMVjHnfYGF0rmFCozFSxQBxwHKO" crossorigin="anonymous"></script>
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
     <style>
         #cesiumContainer {
             width: 100%;
-            height: 90vh;
+            height: 85vh;
             margin: 0;
             padding: 0;
         }
@@ -49,6 +58,26 @@
         });
 
 
+        const roadStyles = {
+            'highway.motorway': { color: Cesium.Color.BLUE, width: 4 },
+            'highway.primary': { color: Cesium.Color.GREEN, width: 4 },
+            'highway.secondary': { color: Cesium.Color.YELLOW, width: 4 },
+            'highway.tertiary': { color: Cesium.Color.PURPLE, width: 4 },
+            'highway.trunk': { color: Cesium.Color.ORANGE, width: 4 },
+            'highway.residential': { color: Cesium.Color.WHITE, width: 4 },
+            'default': { color: Cesium.Color.GRAY, width: 4 }
+        };
+
+        function mostrarSpinner() {
+            console.log("Mostrando spinner");
+            document.getElementById("spinnerOverlay").style.display = "flex";
+        }
+
+        function ocultarSpinner() {
+            console.log("Ocultando spinner");
+        document.getElementById("spinnerOverlay").style.display = "none";
+    }
+
         handler.setInputAction(function (click) {
             const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
 
@@ -87,6 +116,47 @@
             }
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
+
+        function crearLineString(datosLineString,altura=0) {
+            const coordenadas = datosLineString.geometry.coordinates; 
+            const posiciones = coordenadas.map(coord => {
+            const [lon, lat] = coord;
+            return Cesium.Cartesian3.fromDegrees(lon, lat, 0);
+            });
+
+            const rawType = datosLineString.properties.tipo ? datosLineString.properties.tipo : 'default';
+            const style = roadStyles[datosLineString.properties.tipo] || roadStyles['default'];
+
+            const velocidad = datosLineString.properties.velocidad ? datosLineString.properties.velocidad : 0;
+            const description = `
+                <table class="cesium-infoBox-defaultTable">
+                    <tr><th>Tipo</th><td>${rawType}</td></tr>
+                    <tr><th>Velocidad Máx</th><td>${velocidad} km/h</td></tr>
+                    <tr><th>ID Edge</th><td>${datosLineString.properties.id}</td></tr>
+                </table>
+            `;
+
+            viewer.entities.add({
+            description: description, 
+            polyline: {
+                positions: posiciones,
+                material : style.color,
+                width: style.width,
+                clampToGround: true // Para que la línea se ajuste al terreno
+            },
+            // label: {
+            //     text: datosLineString.properties.DIRECCION || 'Sin dirección',
+            //     font: '18pt sans-serif',
+            //     style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            //     outlineWidth: 2,
+            //     verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            //     pixelOffset: new Cesium.Cartesian2(0, -12),
+            //     heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
+            //     disableDepthTestDistance: Number.POSITIVE_INFINITY // Siempre visible encima del terreno
+            // }
+            });
+        }
+
         async function sendToBackend() {
             if (!bounds) return;
             viewer.entities.remove(rectangleEntity);
@@ -99,8 +169,6 @@
                 road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
             };
 
-
-
             try {
                 const response = await fetch('http://localhost:8000/get-roads', {
                     method: 'POST',
@@ -108,70 +176,83 @@
                     body: JSON.stringify(payload)
                 });
 
-                const geojsonData = await response.json();
+                const dataSource = await response.json();
 
-                // 1. Cargar el GeoJSON (sin estilo por defecto para aplicarlo nosotros)
-                const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData);
-                viewer.dataSources.add(dataSource);
 
-                // 2. Definir nuestra paleta de colores por tipo de carretera
-                const roadStyles = {
-                    'highway.motorway': { color: Cesium.Color.BLUE, width: 5 },
-                    'highway.primary': { color: Cesium.Color.GREEN, width: 4 },
-                    'highway.secondary': { color: Cesium.Color.YELLOW, width: 3 },
-                    'highway.residential': { color: Cesium.Color.WHITE, width: 2 },
-                    'default': { color: Cesium.Color.GRAY, width: 1 }
-                };
-
-                // 3. Recorrer cada carretera y aplicar el estilo
-                const entities = dataSource.entities.values;
-                for (let i = 0; i < entities.length; i++) {
-                    const entity = entities[i];
-                    const nombreCalle = entity.properties.nombre.getValue();
-                    const tipoVia = entity.properties.tipo.getValue();
-                    const velocidad = entity.properties.velocidad_max.getValue().toFixed(0);
-                    
-                    // SUMO suele guardar el tipo en entity.properties.type
-                    const rawType = entity.properties.tipo ? entity.properties.tipo.getValue() : 'default';
-                    
-                    // Buscamos el estilo o usamos el default
-                    const style = roadStyles[entity.properties.tipo] || roadStyles['default'];
-
-                    switch (entity.properties.tipo.getValue()) {
-                        case 'highway.motorway':
-                        case 'highway.motorway_link':
-                            entity.polyline.material.color = Cesium.Color.BLUE;
-                            entity.polyline.width = 5;
-                            break;
-                        case 'highway.primary':
-                            entity.polyline.material.color = Cesium.Color.GREEN;
-                            entity.polyline.width = 4;
-                            break;
-                        case 'highway.secondary':
-                            entity.polyline.material.color = Cesium.Color.YELLOW;
-                            entity.polyline.width = 3;
-                            break;
-                        case 'highway.residential':
-                            entity.polyline.material.color = Cesium.Color.RED;
-                            entity.polyline.width = 2;
-                            break;
-                        default:
-                            entity.polyline.material.color = Cesium.Color.PURPLE;
-                            entity.polyline.width = 1;
-                            break;
-                    }
-                    
-                    // Opcional: añadir una descripción al hacer clic
-                    entity.description = `
-                        <table class="cesium-infoBox-defaultTable">
-                            <tr><th>Tipo</th><td>${rawType}</td></tr>
-                            <tr><th>Velocidad Máx</th><td>${velocidad} km/h</td></tr>
-                            <tr><th>ID Edge</th><td>${entity.properties.id.getValue()}</td></tr>
-                        </table>
-                    `;
+                if (!Array.isArray(dataSource)){
+                    entidades = dataSource.features;  
+                }
+                else {
+                    entidades = dataSource[0].features;
                 }
 
-                viewer.zoomTo(dataSource);
+                if (!entidades ) {
+                console.warn("No se encontraron entidades en el GeoJSON."); 
+                return;
+                }
+
+
+                for (let i = 0; i < entidades.length; i++) {
+                    crearLineString(entidades[i]);
+                }
+
+
+                // 1. Cargar el GeoJSON (sin estilo por defecto para aplicarlo nosotros)
+                // const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData);
+                // viewer.dataSources.add(dataSource);
+
+                // 2. Definir nuestra paleta de colores por tipo de carretera
+                
+
+                // 3. Recorrer cada carretera y aplicar el estilo
+                // const entities = dataSource.entities.values;
+                // for (let i = 0; i < entities.length; i++) {
+                //     const entity = entities[i];
+                //     const nombreCalle = entity.properties.nombre.getValue();
+                //     const tipoVia = entity.properties.tipo.getValue();
+                //     const velocidad = entity.properties.velocidad_max.getValue().toFixed(0);
+                    
+                //     // SUMO suele guardar el tipo en entity.properties.type
+                //     const rawType = entity.properties.tipo ? entity.properties.tipo.getValue() : 'default';
+                    
+                //     // Buscamos el estilo o usamos el default
+                //     const style = roadStyles[entity.properties.tipo] || roadStyles['default'];
+
+                //     // switch (entity.properties.tipo.getValue()) {
+                //     //     case 'highway.motorway':
+                //     //     case 'highway.motorway_link':
+                //     //         entity.polyline.material.color = Cesium.Color.BLUE;
+                //     //         entity.polyline.width = 5;
+                //     //         break;
+                //     //     case 'highway.primary':
+                //     //         entity.polyline.material.color = Cesium.Color.GREEN;
+                //     //         entity.polyline.width = 4;
+                //     //         break;
+                //     //     case 'highway.secondary':
+                //     //         entity.polyline.material.color = Cesium.Color.YELLOW;
+                //     //         entity.polyline.width = 3;
+                //     //         break;
+                //     //     case 'highway.residential':
+                //     //         entity.polyline.material.color = Cesium.Color.RED;
+                //     //         entity.polyline.width = 2;
+                //     //         break;
+                //     //     default:
+                //     //         entity.polyline.material.color = Cesium.Color.PURPLE;
+                //     //         entity.polyline.width = 1;
+                //     //         break;
+                //     // }
+                    
+                //     // Opcional: añadir una descripción al hacer clic
+                //     entity.description = `
+                //         <table class="cesium-infoBox-defaultTable">
+                //             <tr><th>Tipo</th><td>${rawType}</td></tr>
+                //             <tr><th>Velocidad Máx</th><td>${velocidad} km/h</td></tr>
+                //             <tr><th>ID Edge</th><td>${entity.properties.id.getValue()}</td></tr>
+                //         </table>
+                //     `;
+                // }
+
+                // viewer.zoomTo(dataSource);
 
             } catch (error) {
                 console.error("Error:", error);
@@ -295,5 +376,7 @@
         }
     </script>
 </body>
-
+    <div id="spinnerOverlay" class="spinner-overlay">
+        <div class="spinner"></div>
+    </div>
 </html>
