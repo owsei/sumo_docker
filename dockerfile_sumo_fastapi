@@ -1,0 +1,32 @@
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SUMO_HOME=/usr/share/sumo
+ENV PYTHONPATH="$SUMO_HOME/tools"
+
+# 1. Instalar SUMO
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:sumo/stable \
+    && apt-get update \
+    && apt-get install -y \
+    sumo sumo-tools python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN echo "Instalando Fastapi"
+RUN pip install "fastapi[standard]"
+
+# 2. Configurar el entorno de Python
+WORKDIR /code
+COPY ./fastapi/requirements.txt /code/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+COPY ./fastapi/ /code/app
+
+# 3. Copiar el código de la API y mapas
+COPY . .
+
+# Exponer el puerto de FastAPI
+EXPOSE 8000
+
+CMD ["fastapi", "run", "app/main.py", "--port", "8000"]

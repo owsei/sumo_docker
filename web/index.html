@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Cesium Bounding Box to FastAPI</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.105/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.105/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        #cesiumContainer {
+            width: 100%;
+            height: 90vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        #toolbar {
+            height: 10vh;
+            padding: 10px;
+            background: #222;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="toolbar">
+        <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
+        <button onclick="sendToBackend()" id="sendBtn" disabled>Enviar coordenadas</button>
+        <button onclick="startSimulation()" id="simBtn" disabled>Iniciar Simulación</button>
+        <div id="loading" style="display:none; color:yellow;">Generando mapa y simulando tráfico...</div>
+    </div>
+    <div id="cesiumContainer"></div>
+
+    <script>
+        // Reemplaza con tu token de Cesium Ion
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3YWQ3ZWY4ZS03NzBjLTRjNzktYTYyNy0zMTRkYmE1NmE1NDciLCJpZCI6MjgwODk3LCJpYXQiOjE3NDEwNzIzMzl9.rpQ6pVt0APCbZ_zhTJkhquCVXwmMo3unuk4ZafCea-k';
+
+        const viewer = new Cesium.Viewer('cesiumContainer');
+        let handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+        let firstPoint = null;
+        let rectangleEntity = null;
+        let bounds = null;
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(-1.6456,42.8125, 7000),
+            duration: 3,
+        });
+
+
+        handler.setInputAction(function (click) {
+            const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+
+            if (!cartesian) return;
+
+            if (!firstPoint) {
+                // Primer clic: iniciamos el punto
+                firstPoint = Cesium.Cartographic.fromCartesian(cartesian);
+                console.log("Primer punto fijado");
+            } else {
+                // Segundo clic: finalizamos y calculamos el bounding box
+                const secondPoint = Cesium.Cartographic.fromCartesian(cartesian);
+
+                bounds = {
+                    west: Math.min(firstPoint.longitude, secondPoint.longitude),
+                    south: Math.min(firstPoint.latitude, secondPoint.latitude),
+                    east: Math.max(firstPoint.longitude, secondPoint.longitude),
+                    north: Math.max(firstPoint.latitude, secondPoint.latitude)
+                };
+
+                // Dibujar el rectángulo en el mapa
+                if (rectangleEntity) viewer.entities.remove(rectangleEntity);
+
+                rectangleEntity = viewer.entities.add({
+                    rectangle: {
+                        coordinates: Cesium.Rectangle.fromRadians(bounds.west, bounds.south, bounds.east, bounds.north),
+                        material: Cesium.Color.CYAN.withAlpha(0.4),
+                        outline: true,
+                        outlineColor: Cesium.Color.CYAN
+                    }
+                });
+
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('simBtn').disabled = false;
+                firstPoint = null; // Reiniciar para una nueva selección
+            }
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        async function sendToBackend() {
+            if (!bounds) return;
+            viewer.entities.remove(rectangleEntity);
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
+            };
+
+
+
+            try {
+                const response = await fetch('http://localhost:8000/get-roads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const geojsonData = await response.json();
+
+                // 1. Cargar el GeoJSON (sin estilo por defecto para aplicarlo nosotros)
+                const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData);
+                viewer.dataSources.add(dataSource);
+
+                // 2. Definir nuestra paleta de colores por tipo de carretera
+                const roadStyles = {
+                    'highway.motorway': { color: Cesium.Color.BLUE, width: 5 },
+                    'highway.primary': { color: Cesium.Color.GREEN, width: 4 },
+                    'highway.secondary': { color: Cesium.Color.YELLOW, width: 3 },
+                    'highway.residential': { color: Cesium.Color.WHITE, width: 2 },
+                    'default': { color: Cesium.Color.GRAY, width: 1 }
+                };
+
+                // 3. Recorrer cada carretera y aplicar el estilo
+                const entities = dataSource.entities.values;
+                for (let i = 0; i < entities.length; i++) {
+                    const entity = entities[i];
+                    const nombreCalle = entity.properties.nombre.getValue();
+                    const tipoVia = entity.properties.tipo.getValue();
+                    const velocidad = entity.properties.velocidad_max.getValue().toFixed(0);
+                    
+                    // SUMO suele guardar el tipo en entity.properties.type
+                    const rawType = entity.properties.tipo ? entity.properties.tipo.getValue() : 'default';
+                    
+                    // Buscamos el estilo o usamos el default
+                    const style = roadStyles[entity.properties.tipo] || roadStyles['default'];
+
+                    switch (entity.properties.tipo.getValue()) {
+                        case 'highway.motorway':
+                        case 'highway.motorway_link':
+                            entity.polyline.material.color = Cesium.Color.BLUE;
+                            entity.polyline.width = 5;
+                            break;
+                        case 'highway.primary':
+                            entity.polyline.material.color = Cesium.Color.GREEN;
+                            entity.polyline.width = 4;
+                            break;
+                        case 'highway.secondary':
+                            entity.polyline.material.color = Cesium.Color.YELLOW;
+                            entity.polyline.width = 3;
+                            break;
+                        case 'highway.residential':
+                            entity.polyline.material.color = Cesium.Color.RED;
+                            entity.polyline.width = 2;
+                            break;
+                        default:
+                            entity.polyline.material.color = Cesium.Color.PURPLE;
+                            entity.polyline.width = 1;
+                            break;
+                    }
+                    
+                    // Opcional: añadir una descripción al hacer clic
+                    entity.description = `
+                        <table class="cesium-infoBox-defaultTable">
+                            <tr><th>Tipo</th><td>${rawType}</td></tr>
+                            <tr><th>Velocidad Máx</th><td>${velocidad} km/h</td></tr>
+                            <tr><th>ID Edge</th><td>${entity.properties.id.getValue()}</td></tr>
+                        </table>
+                    `;
+                }
+
+                viewer.zoomTo(dataSource);
+
+            } catch (error) {
+                console.error("Error:", error);
+            }
+        }
+
+        async function startSimulation() {
+            if (!bounds) return;
+            
+            // Ocultar carreteras y mostrar botón de carga
+            document.getElementById('loading').style.display = 'block';
+
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north)
+            };
+
+            try {
+                // 1. Pedir el mapa a Overpass
+                const mapResponse = await fetch('http://localhost:8000/get-roads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const geojsonData = await mapResponse.json();
+
+                // Dibujar mapa base
+                const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData);
+                viewer.dataSources.add(dataSource);
+                // ... (código de estilos de carreteras) ...
+
+                // 2. Pedir la simulación a SUMO
+                const simResponse = await fetch('http://localhost:8000/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const simulationData = await simResponse.json();
+
+                // 3. Dibujar vehículos
+                const vehicleDataSource = new Cesium.CustomDataSource('Vehicles');
+                viewer.dataSources.add(vehicleDataSource);
+
+                // Crear una entidad base para los coches (luego clonaremos)
+                const carEntity = vehicleDataSource.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(0, 0),
+                    model: {
+                        uri: 'models/car.glb', // Asegúrate de tener este modelo en tu carpeta web
+                        minimumPixelSize: 16,
+                        maximumScale: 20
+                    },
+                    orientation: new Cesium.CallbackProperty(() => {
+                        return Cesium.Matrix4.IDENTITY;
+                    }, false)
+                });
+
+                // Array para guardar las entidades clonadas
+                const carInstances = [];
+
+                // Crear instancias para cada coche
+                simulationData.vehicles[0].forEach(v => {
+                    const instance = new Cesium.ModelInstance({
+                        model: carEntity._model, // Usar el mismo modelo
+                        id: v.id,
+                        position: Cesium.Cartesian3.fromDegrees(v.lon, v.lat),
+                        orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                            Cesium.HeadingPitchRoll.fromDegrees(0, 0, v.angle),
+                            Cesium.HeadingPitchRollStructure.HEADING_PITCH_ROLL
+                        )
+                    });
+                    carInstances.push(instance);
+                });
+
+                // Crear un ModelGraphics para renderizar todas las instancias
+                vehicleDataSource.entities.add({
+                    model: {
+                        instances: carInstances,
+                        minimumPixelSize: 16,
+                        maximumScale: 20
+                    }
+                });
+
+                // Ocultar la entidad base
+                vehicleDataSource.entities.remove(carEntity);
+
+                // 4. Animación
+                let currentStep = 0;
+                viewer.clock.shouldAnimate = true;
+                viewer.clock.multiplier = 1; // Velocidad de la animación
+
+                viewer.clock.onTick.addEventListener((clock) => {
+                    if (currentStep < simulationData.vehicles.length) {
+                        const vehicles = simulationData.vehicles[currentStep];
+                        
+                        vehicles.forEach((v, index) => {
+                            const instance = carInstances[index];
+                            if (instance) {
+                                instance.position = Cesium.Cartesian3.fromDegrees(v.lon, v.lat);
+                                instance.orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                                    Cesium.HeadingPitchRoll.fromDegrees(0, 0, v.angle),
+                                    Cesium.HeadingPitchRollStructure.HEADING_PITCH_ROLL
+                                );
+                            }
+                        });
+                        
+                        currentStep++;
+                    } else {
+                        viewer.clock.shouldAnimate = false;
+                    }
+                });
+
+                viewer.zoomTo(dataSource);
+
+            } catch (error) {
+                console.error("Error:", error);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>
