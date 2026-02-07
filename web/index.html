@@ -71,6 +71,14 @@
             'default': { color: Cesium.Color.GRAY, width: 4 }
         };
 
+        function sleep(milliseconds) {
+            const date = Date.now();
+            let currentDate = null;
+            do {
+                currentDate = Date.now();
+            } while (currentDate - date < milliseconds);
+        }
+
         function mostrarSpinner(){
             document.getElementById('spinnerOverlay').style.display = 'block';
         }
@@ -430,21 +438,8 @@
                 east: Cesium.Math.toDegrees(bounds.east),
                 north: Cesium.Math.toDegrees(bounds.north),
                 // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ['motorway',
-                    'trunk',
-                    'primary',
-                    'secondary',
-                    'tertiary',
-                    'unclassified',
-                    'residential',
-                    'living_street',
-                    'motorway_link',
-                    'trunk_link',
-                    'primary_link',
-                    'secondary_link',
-                    'tertiary_link',
-                    'service'
-                ]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
+                
             };
             try {
                 mostrarSpinner();
@@ -453,36 +448,53 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                if (!response.ok) throw new Error('Error en la simulación');
                 
                 const data = await response.json();
                 console.log('Simulación completada:', data);
+
 
                 const startTime = Cesium.JulianDate.now();
                 
                 // Diccionario para guardar las entidades de los coches
                 let vehicleEntities = {};
+                datosVehiculos = data.data.features;
+                console.log('Datos de vehículos:', datosVehiculos);
 
-                data.forEach(frame => {
-                    const time = Cesium.JulianDate.addSeconds(startTime, frame.step, new Cesium.JulianDate());
-                    
-                    frame.vehicles.forEach(veh => {
-                        if (!vehicleEntities[veh.id]) {
-                            // Si el coche no existe, lo creamos
-                            vehicleEntities[veh.id] = viewer.entities.add({
-                                id: veh.id,
-                                position: new Cesium.SampledPositionProperty(),
-                                point: { pixelSize: 10, color: Cesium.Color.YELLOW },
-                                label: { text: veh.id, font: '10pt sans-serif', pixelOffset: new Cesium.Cartesian2(0, -15) }
-                            });
-                        }
-                        
-                        // Añadimos la posición en este paso de tiempo
-                        const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
-                        vehicleEntities[veh.id].position.addSample(time, position);
-                    });
-                });
                 ocultarSpinner();
+                i=0;
+                datosVehiculos.forEach(veh => {
+                    const coordenadas = veh.geometry.coordinates; 
+                    if (!vehicleEntities[veh.properties.id]) {
+                        // Si el coche no existe, lo creamos
+                        vehicleEntities[veh.properties.id] = viewer.entities.add({
+                            id: veh.properties.id,
+                            position: Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]),
+                            point: { 
+                                id: veh.properties.id,
+                                pixelSize: 15, 
+                                color: Cesium.Color.RED ,clampToGround: true,
+                                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY 
+                            },  
+
+                        });
+                    }
+                    else {
+                        // Añadimos la posición en este paso de tiempo
+                        const position = Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]);
+                        viewer.entities.getById(veh.properties.id).position = position;
+                        viewer.entities.getById(veh.properties.id).point = { pixelSize: 15, color: Cesium.Color.RED ,clampToGround: true}; 
+                        console.log(viewer.entities.getById(veh.properties.id));   
+
+                        //vehicleEntities[veh.id].position.addSample(time, position);
+                    }
+                    i++
+                    console.log(i);
+                    sleep(500);
+
+                });
+                
+                
             } catch (error) {
                 ocultarSpinner();
                 console.error('Error:', error);
