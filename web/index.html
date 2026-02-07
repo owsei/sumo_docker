@@ -15,31 +15,25 @@
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 
-    <style>
-        #cesiumContainer {
-            width: 100%;
-            height: 85vh;
-            margin: 0;
-            padding: 0;
-        }
+    <link rel="stylesheet" href="styles/styles.css"></script>
 
-        #toolbar {
-            height: 10vh;
-            padding: 10px;
-            background: #222;
-            color: white;
-        }
-    </style>
 </head>
 
 <body>
     <div id="toolbar">
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
         <button onclick="sendToBackend()" id="sendBtn" disabled>Enviar coordenadas</button>
-        <button onclick="startSimulation()" id="simBtn" disabled>Iniciar Simulación</button>
+        <button onclick="runSimulationWindows()" id="simBtn" disabled>Iniciar Simulación</button>
+        <button onclick="runSimulationTraci()" id="simTraciBtn" disabled>Iniciar Simulación Traci</button>
+        <button onclick="runSimulationLinux()" id="simLinuxBtn" disabled>Iniciar Simulación Linux</button>
+
         <div id="loading" style="display:none; color:yellow;">Generando mapa y simulando tráfico...</div>
     </div>
     <div id="cesiumContainer"></div>
+
+    <div id="spinnerOverlay" class="spinner-overlay">
+        <div class="spinner"></div>
+    </div>  
 
     <script>
         // Reemplaza con tu token de Cesium Ion
@@ -53,10 +47,9 @@
         let bounds = null;
 
         viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(-1.6456,42.8125, 7000),
-            duration: 3,
+            destination: Cesium.Cartesian3.fromDegrees(-1.872093,42.912304, 3000),
+            duration: 0
         });
-
 
         const roadStyles = {
             'highway.motorway': { color: Cesium.Color.BLUE, width: 4 },
@@ -68,54 +61,107 @@
             'default': { color: Cesium.Color.GRAY, width: 4 }
         };
 
-        function mostrarSpinner() {
-            console.log("Mostrando spinner");
-            document.getElementById("spinnerOverlay").style.display = "flex";
+        const velocityStyles = {
+            '120': { color: Cesium.Color.BLUE, width: 4 },
+            '100': { color: Cesium.Color.GREEN, width: 4 },
+            '80': { color: Cesium.Color.YELLOW, width: 4 },
+            '60': { color: Cesium.Color.PURPLE, width: 4 },
+            '40': { color: Cesium.Color.ORANGE, width: 4 },
+            '20': { color: Cesium.Color.WHITE, width: 4 },
+            'default': { color: Cesium.Color.GRAY, width: 4 }
+        };
+
+        function mostrarSpinner(){
+            document.getElementById('spinnerOverlay').style.display = 'block';
         }
 
-        function ocultarSpinner() {
-            console.log("Ocultando spinner");
-        document.getElementById("spinnerOverlay").style.display = "none";
-    }
+        function ocultarSpinner(){
+            document.getElementById('spinnerOverlay').style.display = 'none';
+        }
+
+        function getVelocityStyle(velocity) {
+
+            if (velocity>119) {
+                return Cesium.Color.BLUE;
+            } else if (velocity>101 && velocity<=119) {
+                return Cesium.Color.GREEN;
+            } else if (velocity>80 && velocity<=101) {
+                return Cesium.Color.YELLOW;
+            } else if (velocity>60 && velocity<=80) {
+                return Cesium.Color.PURPLE;
+            } else if (velocity>40 && velocity<=60) {
+                return Cesium.Color.ORANGE;
+            } else if (velocity>20 && velocity<=40) {
+                return Cesium.Color.WHITE;
+            } else {
+                return Cesium.Color.GRAY;
+            }
+        }
+
+        function createPropertiesPanel(properties) {
+    
+            let descrip = `<table class="tablePorperties">`;
+            for (const [key, value] of Object.entries(properties)) {
+            if (key === 'enlace'|| key === 'url' || key === 'link' || key === 'source') {
+                // Si el valor es un enlace, lo formateamos como un enlace HTML
+                descrip = descrip + `<tr class="trproper">
+                                        <td>Enlace</td>
+                                        <td class="tdproper">
+                                        <a href="${value}" target="_blank">Ir a Catastro</a>
+                                        </td>
+                                    </tr>`;
+            }
+            else{
+                descrip = descrip + `<tr class="trproper">
+                                        <td class="tdproper">${key}</td>
+                                        <td class="tdproper"> ${value}</td>
+                                    </tr>`;
+            }
+            
+            }
+            descrip = descrip + '</table>';
+            return descrip;
+        }
 
         handler.setInputAction(function (click) {
-            const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+        const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
 
-            if (!cartesian) return;
+        if (!cartesian) return;
 
-            if (!firstPoint) {
-                // Primer clic: iniciamos el punto
-                firstPoint = Cesium.Cartographic.fromCartesian(cartesian);
-                console.log("Primer punto fijado");
-            } else {
-                // Segundo clic: finalizamos y calculamos el bounding box
-                const secondPoint = Cesium.Cartographic.fromCartesian(cartesian);
+        if (!firstPoint) {
+            // Primer clic: iniciamos el punto
+            firstPoint = Cesium.Cartographic.fromCartesian(cartesian);
+            console.log("Primer punto fijado");
+        } else {
+            // Segundo clic: finalizamos y calculamos el bounding box
+            const secondPoint = Cesium.Cartographic.fromCartesian(cartesian);
 
-                bounds = {
-                    west: Math.min(firstPoint.longitude, secondPoint.longitude),
-                    south: Math.min(firstPoint.latitude, secondPoint.latitude),
-                    east: Math.max(firstPoint.longitude, secondPoint.longitude),
-                    north: Math.max(firstPoint.latitude, secondPoint.latitude)
-                };
+            bounds = {
+                west: Math.min(firstPoint.longitude, secondPoint.longitude),
+                south: Math.min(firstPoint.latitude, secondPoint.latitude),
+                east: Math.max(firstPoint.longitude, secondPoint.longitude),
+                north: Math.max(firstPoint.latitude, secondPoint.latitude)
+            };
 
-                // Dibujar el rectángulo en el mapa
-                if (rectangleEntity) viewer.entities.remove(rectangleEntity);
+            // Dibujar el rectángulo en el mapa
+            if (rectangleEntity) viewer.entities.remove(rectangleEntity);
 
-                rectangleEntity = viewer.entities.add({
-                    rectangle: {
-                        coordinates: Cesium.Rectangle.fromRadians(bounds.west, bounds.south, bounds.east, bounds.north),
-                        material: Cesium.Color.CYAN.withAlpha(0.4),
-                        outline: true,
-                        outlineColor: Cesium.Color.CYAN
-                    }
-                });
+            rectangleEntity = viewer.entities.add({
+                rectangle: {
+                    coordinates: Cesium.Rectangle.fromRadians(bounds.west, bounds.south, bounds.east, bounds.north),
+                    material: Cesium.Color.CYAN.withAlpha(0.4),
+                    outline: true,
+                    outlineColor: Cesium.Color.CYAN
+                }
+            });
 
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('simBtn').disabled = false;
-                firstPoint = null; // Reiniciar para una nueva selección
-            }
-        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('simBtn').disabled = false;
+            document.getElementById('simTraciBtn').disabled = false;  
+            document.getElementById('simLinuxBtn').disabled = false;  
+            firstPoint = null; // Reiniciar para una nueva selección
+        }
+    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
         function crearLineString(datosLineString,altura=0) {
             const coordenadas = datosLineString.geometry.coordinates; 
@@ -124,36 +170,27 @@
             return Cesium.Cartesian3.fromDegrees(lon, lat, 0);
             });
 
-            const rawType = datosLineString.properties.tipo ? datosLineString.properties.tipo : 'default';
-            const style = roadStyles[datosLineString.properties.tipo] || roadStyles['default'];
-
-            const velocidad = datosLineString.properties.velocidad ? datosLineString.properties.velocidad : 0;
+            const rawType = datosLineString.properties.velocidad_max ? datosLineString.properties.velocidad_max : 'default';
+            const style = roadStyles[datosLineString.properties.velocidad_max] || roadStyles['default'];
+            
+            const velocityStyle = getVelocityStyle(datosLineString.properties.velocidad_max);
+            
             const description = `
                 <table class="cesium-infoBox-defaultTable">
                     <tr><th>Tipo</th><td>${rawType}</td></tr>
-                    <tr><th>Velocidad Máx</th><td>${velocidad} km/h</td></tr>
+                    <tr><th>Velocidad Máx</th><td>${datosLineString.properties.velocidad_max} km/h</td></tr>
                     <tr><th>ID Edge</th><td>${datosLineString.properties.id}</td></tr>
                 </table>
             `;
 
             viewer.entities.add({
-            description: description, 
+            description: createPropertiesPanel(datosLineString.properties),
             polyline: {
                 positions: posiciones,
-                material : style.color,
-                width: style.width,
+                material : velocityStyle,
+                width: 3,
                 clampToGround: true // Para que la línea se ajuste al terreno
-            },
-            // label: {
-            //     text: datosLineString.properties.DIRECCION || 'Sin dirección',
-            //     font: '18pt sans-serif',
-            //     style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            //     outlineWidth: 2,
-            //     verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            //     pixelOffset: new Cesium.Cartesian2(0, -12),
-            //     heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
-            //     disableDepthTestDistance: Number.POSITIVE_INFINITY // Siempre visible encima del terreno
-            // }
+            }
             });
         }
 
@@ -166,10 +203,11 @@
                 east: Cesium.Math.toDegrees(bounds.east),
                 north: Cesium.Math.toDegrees(bounds.north),
                 // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
             };
 
             try {
+                mostrarSpinner()
                 const response = await fetch('http://localhost:8000/get-roads', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -177,7 +215,6 @@
                 });
 
                 const dataSource = await response.json();
-
 
                 if (!Array.isArray(dataSource)){
                     entidades = dataSource.features;  
@@ -187,75 +224,21 @@
                 }
 
                 if (!entidades ) {
-                console.warn("No se encontraron entidades en el GeoJSON."); 
-                return;
+                    console.warn("No se encontraron entidades en el GeoJSON."); 
+                    return;
                 }
-
 
                 for (let i = 0; i < entidades.length; i++) {
                     crearLineString(entidades[i]);
                 }
-
-
-                // 1. Cargar el GeoJSON (sin estilo por defecto para aplicarlo nosotros)
-                // const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData);
-                // viewer.dataSources.add(dataSource);
-
-                // 2. Definir nuestra paleta de colores por tipo de carretera
-                
-
-                // 3. Recorrer cada carretera y aplicar el estilo
-                // const entities = dataSource.entities.values;
-                // for (let i = 0; i < entities.length; i++) {
-                //     const entity = entities[i];
-                //     const nombreCalle = entity.properties.nombre.getValue();
-                //     const tipoVia = entity.properties.tipo.getValue();
-                //     const velocidad = entity.properties.velocidad_max.getValue().toFixed(0);
-                    
-                //     // SUMO suele guardar el tipo en entity.properties.type
-                //     const rawType = entity.properties.tipo ? entity.properties.tipo.getValue() : 'default';
-                    
-                //     // Buscamos el estilo o usamos el default
-                //     const style = roadStyles[entity.properties.tipo] || roadStyles['default'];
-
-                //     // switch (entity.properties.tipo.getValue()) {
-                //     //     case 'highway.motorway':
-                //     //     case 'highway.motorway_link':
-                //     //         entity.polyline.material.color = Cesium.Color.BLUE;
-                //     //         entity.polyline.width = 5;
-                //     //         break;
-                //     //     case 'highway.primary':
-                //     //         entity.polyline.material.color = Cesium.Color.GREEN;
-                //     //         entity.polyline.width = 4;
-                //     //         break;
-                //     //     case 'highway.secondary':
-                //     //         entity.polyline.material.color = Cesium.Color.YELLOW;
-                //     //         entity.polyline.width = 3;
-                //     //         break;
-                //     //     case 'highway.residential':
-                //     //         entity.polyline.material.color = Cesium.Color.RED;
-                //     //         entity.polyline.width = 2;
-                //     //         break;
-                //     //     default:
-                //     //         entity.polyline.material.color = Cesium.Color.PURPLE;
-                //     //         entity.polyline.width = 1;
-                //     //         break;
-                //     // }
-                    
-                //     // Opcional: añadir una descripción al hacer clic
-                //     entity.description = `
-                //         <table class="cesium-infoBox-defaultTable">
-                //             <tr><th>Tipo</th><td>${rawType}</td></tr>
-                //             <tr><th>Velocidad Máx</th><td>${velocidad} km/h</td></tr>
-                //             <tr><th>ID Edge</th><td>${entity.properties.id.getValue()}</td></tr>
-                //         </table>
-                //     `;
-                // }
-
-                // viewer.zoomTo(dataSource);
+              
+                ocultarSpinner()
 
             } catch (error) {
+                ocultarSpinner()
                 console.error("Error:", error);
+            } finally {
+                ocultarSpinner();
             }
         }
 
@@ -264,6 +247,8 @@
             
             // Ocultar carreteras y mostrar botón de carga
             document.getElementById('loading').style.display = 'block';
+
+            mostrarSpinner();
 
             const payload = {
                 west: Cesium.Math.toDegrees(bounds.west),
@@ -368,15 +353,203 @@
 
                 viewer.zoomTo(dataSource);
 
+                ocultarSpinner();
+
             } catch (error) {
+                ocultarSpinner();
+                alert("Error:", error);
                 console.error("Error:", error);
             } finally {
+                ocultarSpinner();
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+    
+        async function runSimulationWindows() {
+            if (!bounds) return;
+            viewer.entities.remove(rectangleEntity);
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
+            };
+
+            try {
+                mostrarSpinner()
+                const response = await fetch('http://localhost:8000/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+
+                const startTime = Cesium.JulianDate.now();
+                
+                // Diccionario para guardar las entidades de los coches
+                let vehicleEntities = {};
+
+                data.forEach(frame => {
+                    const time = Cesium.JulianDate.addSeconds(startTime, frame.step, new Cesium.JulianDate());
+                    
+                    frame.vehicles.forEach(veh => {
+                        if (!vehicleEntities[veh.id]) {
+                            // Si el coche no existe, lo creamos
+                            vehicleEntities[veh.id] = viewer.entities.add({
+                                id: veh.id,
+                                position: new Cesium.SampledPositionProperty(),
+                                point: { pixelSize: 10, color: Cesium.Color.YELLOW },
+                                label: { text: veh.id, font: '10pt sans-serif', pixelOffset: new Cesium.Cartesian2(0, -15) }
+                            });
+                        }
+                        
+                        // Añadimos la posición en este paso de tiempo
+                        const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
+                        vehicleEntities[veh.id].position.addSample(time, position);
+                    });
+                });
+            }
+            catch (error) {
+                console.error("Error:", error);
+            }
+            finally {
+                ocultarSpinner();
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        async function runSimulationTraci() {
+            if (!bounds) return;
+            viewer.entities.remove(rectangleEntity);
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ['motorway',
+                    'trunk',
+                    'primary',
+                    'secondary',
+                    'tertiary',
+                    'unclassified',
+                    'residential',
+                    'living_street',
+                    'motorway_link',
+                    'trunk_link',
+                    'primary_link',
+                    'secondary_link',
+                    'tertiary_link',
+                    'service'
+                ]    
+            };
+            try {
+                mostrarSpinner();
+                const response = await fetch('http://localhost:8000/run-simulation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Error en la simulación');
+                
+                const data = await response.json();
+                console.log('Simulación completada:', data);
+
+                const startTime = Cesium.JulianDate.now();
+                
+                // Diccionario para guardar las entidades de los coches
+                let vehicleEntities = {};
+
+                data.forEach(frame => {
+                    const time = Cesium.JulianDate.addSeconds(startTime, frame.step, new Cesium.JulianDate());
+                    
+                    frame.vehicles.forEach(veh => {
+                        if (!vehicleEntities[veh.id]) {
+                            // Si el coche no existe, lo creamos
+                            vehicleEntities[veh.id] = viewer.entities.add({
+                                id: veh.id,
+                                position: new Cesium.SampledPositionProperty(),
+                                point: { pixelSize: 10, color: Cesium.Color.YELLOW },
+                                label: { text: veh.id, font: '10pt sans-serif', pixelOffset: new Cesium.Cartesian2(0, -15) }
+                            });
+                        }
+                        
+                        // Añadimos la posición en este paso de tiempo
+                        const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
+                        vehicleEntities[veh.id].position.addSample(time, position);
+                    });
+                });
+                ocultarSpinner();
+            } catch (error) {
+                ocultarSpinner();
+                console.error('Error:', error);
+            }
+            finally {
+                ocultarSpinner();
+                console.log('Simulación completada');
+                document.getElementById('simTraciBtn').disabled = false;
+            }
+        }
+
+        async function runSimulationLinux() {
+            if (!bounds) return;
+            viewer.entities.remove(rectangleEntity);
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
+            };
+
+            try {
+                mostrarSpinner()
+                const response = await fetch('http://localhost:8000/simularLinux', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+
+                const startTime = Cesium.JulianDate.now();
+                
+                // Diccionario para guardar las entidades de los coches
+                let vehicleEntities = {};
+
+                data.forEach(frame => {
+                    const time = Cesium.JulianDate.addSeconds(startTime, frame.step, new Cesium.JulianDate());
+                    
+                    frame.vehicles.forEach(veh => {
+                        if (!vehicleEntities[veh.id]) {
+                            // Si el coche no existe, lo creamos
+                            vehicleEntities[veh.id] = viewer.entities.add({
+                                id: veh.id,
+                                position: new Cesium.SampledPositionProperty(),
+                                point: { pixelSize: 10, color: Cesium.Color.YELLOW },
+                                label: { text: veh.id, font: '10pt sans-serif', pixelOffset: new Cesium.Cartesian2(0, -15) }
+                            });
+                        }
+                        
+                        // Añadimos la posición en este paso de tiempo
+                        const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
+                        vehicleEntities[veh.id].position.addSample(time, position);
+                    });
+                });
+            }
+            catch (error) {
+                console.error("Error:", error);
+            }
+            finally {
+                ocultarSpinner();
                 document.getElementById('loading').style.display = 'none';
             }
         }
     </script>
 </body>
-    <div id="spinnerOverlay" class="spinner-overlay">
-        <div class="spinner"></div>
-    </div>
+    
 </html>

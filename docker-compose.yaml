@@ -1,18 +1,18 @@
 services:
-  fastapi:
-    hostname: fastapi
-    container_name: fastapi
-    build:
-      context: .
-      dockerfile: dockerfile_sumo_fastapi
-    environment:
-      - SUMO_HOME=/usr/share/sumo
-    ports:
-      - "8000:8000"
-    stdin_open: true
-    tty: true
-    networks:
-      - fiware
+  # fastapi:
+  #   hostname: fastapi
+  #   container_name: fastapi
+  #   build:
+  #     context: .
+  #     dockerfile: dockerfile_sumo_fastapi
+  #   environment:
+  #     - SUMO_HOME=/usr/share/sumo
+  #   ports:
+  #     - "8000:8000"
+  #   stdin_open: true
+  #   tty: true
+  #   networks:
+  #     - fiware
 
   nginx_server:
     hostname: nginx
@@ -22,8 +22,8 @@ services:
       dockerfile: dockerfile_nginx
     ports:
       - "80:80"
-    depends_on:
-      - fastapi
+    # depends_on:
+    #   - fastapi
     networks:
       - fiware
 
