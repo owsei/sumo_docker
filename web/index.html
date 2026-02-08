@@ -28,13 +28,13 @@
         <button onclick="runSimulationLinux()" id="simLinuxBtn" disabled>Iniciar Simulación Linux</button>
         <button onclick="runSimulationWebsocket()" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
 
-        <div id="loading" style="display:none; color:yellow;">Generando mapa y simulando tráfico...</div>
+        <div id="loading" style="display:block; color:yellow;"></div>
     </div>
     <div id="cesiumContainer"></div>
 
     <div id="spinnerOverlay" class="spinner-overlay">
         <div class="spinner"></div>
-    </div>  
+    </div>
 
     <script>
         // Reemplaza con tu token de Cesium Ion
@@ -494,7 +494,7 @@
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
             viewer.entities.remove(rectangleEntity);
-
+            document.getElementById('loading').innerHTML = "Conectando al servidor...";
             const payload = {
                 west: Cesium.Math.toDegrees(bounds.west),
                 south: Cesium.Math.toDegrees(bounds.south),
@@ -509,13 +509,16 @@
             const vehicles = {}; // Diccionario para rastrear entidades
 
             socket.onopen = () => {
-                mostrarSpinner()
                 console.log('Conectado al servidor');
             };
     
             socket.onmessage = function(event) {
-                ocultarSpinner();
                 const data = JSON.parse(event.data);
+                if (data.mensaje ) {
+                    document.getElementById('loading').innerHTML = data.mensaje;
+                    return;
+                }
+                ocultarSpinner();
                 console.log('Datos de vehículos:', data);
                 const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
                 if (!vehicles[data.id]) {

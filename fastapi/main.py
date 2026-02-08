@@ -414,7 +414,7 @@ async def run_simulation(bbox: BoundingBox):
             
             # Ejecutar la simulación paso a paso
             step = 0
-            max_steps = 200  # 1 hora de simulación
+            max_steps = 3600  # 1 hora de simulación
             
             while step < max_steps and traci.simulation.getMinExpectedNumber() > 0:
                 traci.simulationStep()  # Avanzar un paso
@@ -455,15 +455,15 @@ async def run_simulation(bbox: BoundingBox):
             traci.close()
             print("Simulación finalizada correctamente")
             
-            # Convertir a formato GeoJSON para Cesium
-            geojson_data = convert_to_geojson_traci(simulation_data)
-            print("Datos convertidos correctamente")
+            # # Convertir a formato GeoJSON para Cesium
+            # geojson_data = convert_to_geojson_traci(simulation_data)
+            # print("Datos convertidos correctamente")
             
-            return {
-                "status": "success",
-                "total_steps": step,
-                "data": geojson_data
-            }
+            # return {
+            #     "status": "success",
+            #     "total_steps": step,
+            #     "data": geojson_data
+            # }
         
         
     except Exception as e:
@@ -471,8 +471,6 @@ async def run_simulation(bbox: BoundingBox):
         if traci.isLoaded():
             traci.close()
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 
 def generate_xml(bbox: BoundingBox):
@@ -557,8 +555,6 @@ def generate_xml(bbox: BoundingBox):
         print(f"Error en la generación del archivo XML: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
 @app.websocket("/ws/simulation")
 async def websocket_simulation(websocket: WebSocket):
     bbox_str = websocket.query_params.get("bbox")
@@ -572,11 +568,14 @@ async def websocket_simulation(websocket: WebSocket):
     
     await websocket.accept()
 
-    sumo_home = os.environ.get("SUMO_HOME")
+    sumo_home = "user/share/sumo"
+    
     if not sumo_home:
         # Intenta buscar la ruta por defecto si no está la variable
         sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
+    
     print("Ruta de SUMO encontrada correctamente", sumo_home)
+    await websocket.send_json({"mensaje":"Ruta de SUMO encontrada correctamente"+ sumo_home})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print("Directorio temporal creado correctamente", tmpdir)
@@ -589,14 +588,20 @@ async def websocket_simulation(websocket: WebSocket):
 
         # 1. Descarga (usando el método de requests que vimos antes)
         print("Descargando datos de OSM")
+        await websocket.send_json({"mensaje":"Descargando datos OSM"})
+
         download_osm_data(bbox, osm_file)
         print("Datos de OSM descargados correctamente")
+        await websocket.send_json({"mensaje":"Datos de OSM descargados correctamente"})
+
         sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
         
         # 2. Generar red de SUMO
         print("Generando red de SUMO")
-        procesoNet=subprocess.run([
-            os.path.join(sumo_home, "bin", "netconvert"),
+        await websocket.send_json({"mensaje":"Generando red de SUMO"})
+
+        subprocess.run([
+            "netconvert",
             "--osm-files", osm_file,
             "--output-file", net_file,
             "--geometry.remove", "true",
@@ -605,23 +610,30 @@ async def websocket_simulation(websocket: WebSocket):
             "--remove-edges.isolated", "true"
         ], check=True)
         print("Red generada correctamente")
+        await websocket.send_json({"mensaje":"Red generada correctamente"})
 
         # 3. Generar tráfico aleatorio
         print("Generando tráfico aleatorio")
-        random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
+        await websocket.send_json({"mensaje":"Generando tráfico aleatorio"})
+        
+        random_trips = os.path.join("/usr/share/sumo", "tools", "randomTrips.py")
         procesoTraffic=subprocess.run([
-            "python", random_trips,
+            "python3", random_trips,
             "-n", net_file,
             "-r", route_file,
             "-e", "3600",  # Simular 3600 segundos de tráfico
             "--period", "0.5" # Aparece un coche cada 0.5 segundos
         ], check=True)  
         print("Tráfico generado correctamente")
+        await websocket.send_json({"mensaje":"Tráfico generado correctamente"})
 
         # Primero crea el archivo de configuración SUMO
         print("Creando archivo de configuración SUMO")
+        await websocket.send_json({"mensaje":"Creando archivo de configuración SUMO"})
+        
         config_file = os.path.join(tmpdir, "simulation.sumocfg")
         print("Archivo de configuración SUMO creado correctamente", config_file)
+        await websocket.send_json({"mensaje":"Archivo de configuración SUMO creado correctamente"})
         
         # Crear el archivo .sumocfg
         with open(config_file, 'w') as f:
@@ -642,10 +654,10 @@ async def websocket_simulation(websocket: WebSocket):
         # 4. Iniciar simulación con TraCI
         try:
             sumo_binary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
-            print(sumo_binary)
             print("Iniciando simulación")
+            await websocket.send_json({"mensaje":"Iniciando simulación"})
             traci.start([
-                sumo_binary,
+                "/usr/share/sumo/bin/sumo",
                 "-c", config_file,
                 "--step-length", "1",  # 1 segundo por paso
                 "--no-warnings", "true"
@@ -693,16 +705,18 @@ async def websocket_simulation(websocket: WebSocket):
             # Cerrar TraCI
             traci.close()
             print("Simulación finalizada correctamente")
+            await websocket.send_json({"mensaje":"Simulación finalizada correctamente"})
             
             # Convertir a formato GeoJSON para Cesium
-            geojson_data = convert_to_geojson_traci(simulation_data)
-            print("Datos convertidos correctamente")
+            # geojson_data = convert_to_geojson_traci(simulation_data)
+            # print("Datos convertidos correctamente")
+            # await websocket.send_json({"mensaje":"Datos convertidos correctamente"})
             
-            return {
-                "status": "success",
-                "total_steps": step,
-                "data": geojson_data
-            }
+            # return {
+            #     "status": "success",
+            #     "total_steps": step,
+            #     "data": geojson_data
+            # }
 
         except Exception as e:
             print(f"Error en la simulación:")

@@ -8,6 +8,3 @@ fiona>=1.8.0
 shapely>=1.8.0 
 sumolib
 traci
-libsumo
-fastapi
-uvicorn
