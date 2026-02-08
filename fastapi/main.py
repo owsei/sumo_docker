@@ -656,7 +656,7 @@ async def websocket_simulation(websocket: WebSocket):
                 
             # Ejecutar la simulación paso a paso
             step = 0
-            max_steps = 200  # 1 hora de simulación
+            max_steps = 3600  # 1 hora de simulación
             
             while step < max_steps and traci.simulation.getMinExpectedNumber() > 0:
                 traci.simulationStep()  # Avanzar un paso

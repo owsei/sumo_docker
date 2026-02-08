@@ -489,81 +489,6 @@
             }
         }
 
-        async function runSimulationTraci() {
-            if (!bounds) return;
-            viewer.entities.remove(rectangleEntity);
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north),
-                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
-                
-            };
-            try {
-                mostrarSpinner();
-                const response = await fetch('http://localhost:8000/run-simulation', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                console.log('Simulación completada:', data);
-
-
-                const startTime = Cesium.JulianDate.now();
-                
-                // Diccionario para guardar las entidades de los coches
-                vehicleEntities = {};
-                datosVehiculos = data.data.features;
-                console.log('Datos de vehículos:', datosVehiculos);
-
-                ocultarSpinner();
-                i=0;
-                datosVehiculos.forEach(veh => {
-                    setTimeout(() => {
-                        animarVehiculos(veh);
-                    }, 3000);
-                });
-                
-                
-            } catch (error) {
-                ocultarSpinner();
-                console.error('Error:', error);
-            }
-            finally {
-                ocultarSpinner();
-                console.log('Simulación completada');
-                document.getElementById('simTraciBtn').disabled = false;
-            }
-        }
-
-        function animarVehiculos(veh){
-            const coordenadas = veh.geometry.coordinates; 
-            if (!vehicleEntities[veh.properties.id]) {
-                // Si el coche no existe, lo creamos
-                vehicleEntities[veh.properties.id] = viewer.entities.add({
-                    id: veh.properties.id,
-                    position: Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]),
-                    point: { 
-                        id: veh.properties.id,
-                        pixelSize: 15, 
-                        color: Cesium.Color.RED ,clampToGround: true,
-                        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY 
-                    }
-                });
-            }
-            else {
-                // Añadimos la posición en este paso de tiempo
-                const position = Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]);
-                viewer.entities.getById(veh.properties.id).position = position;
-            }
-        }   
-
-        
     
         async function runSimulationWebsocket() {
             if (!bounds) return;
@@ -584,84 +509,89 @@
             const vehicles = {}; // Diccionario para rastrear entidades
 
             socket.onopen = () => {
+                mostrarSpinner()
                 console.log('Conectado al servidor');
             };
     
             socket.onmessage = function(event) {
+                ocultarSpinner();
                 const data = JSON.parse(event.data);
                 console.log('Datos de vehículos:', data);
                 const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
                 if (!vehicles[data.id]) {
                     // Crear el vehículo si no existe
+                    const orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                        position,
+                        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                    );
+
+                    const random_number = Math.floor(Math.random() * 7) + 1;
+                    let URI_Coche;
+                    if (random_number === 1) {
+                        URI_Coche = "coches/forales.glb";
+                    } else if (random_number === 2) {
+                        URI_Coche = "coches/cocheAzulCubo.glb";
+                    } else if (random_number === 3) {
+                        URI_Coche = "coches/cocheVerdeCubo.glb";
+                    } else if (random_number === 4) {
+                        URI_Coche = "coches/cocheRojoCubo.glb";
+                    } else if (random_number === 5) {
+                        URI_Coche = "coches/cocheAmarilloCubo.glb";
+                    } else if (random_number === 6) {
+                        URI_Coche = "coches/cocheNaranjaCubo.glb";
+                    } else if (random_number === 7) {
+                        URI_Coche = "coches/cocheNegroCubo.glb"
+                    }
+
+                    
+
                     vehicles[data.id] = viewer.entities.add({
                         id: data.id,
                         position: position,
+                        orientation: orientation,
+                        description: createPropertiesPanel(data),
                         // Orientación basada en el ángulo de SUMO
                         // orientation: Cesium.Transforms.headingPitchRollQuaternion(
                         //     position,
                         //     new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
                         // ),
-                        point: { 
-                            id: data.id,
-                            pixelSize: 15, 
-                            color: Cesium.Color.RED ,clampToGround: true,
-                            heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
-                            disableDepthTestDistance: Number.POSITIVE_INFINITY 
+                        // point: { 
+                        //     id: data.id,
+                        //     pixelSize: 15, 
+                        //     color: Cesium.Color.RED ,clampToGround: true,
+                        //     heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
+                        //     disableDepthTestDistance: Number.POSITIVE_INFINITY 
+                        // }
+                        
+                        model: {
+                            uri: URI_Coche, // Ruta a tu carpeta
+                            minimumPixelSize: 20,          // Para que no desaparezca al alejarse
+                            // maximumScale: 20000,
+                            scale: 25.0                  // Ajusta según el tamaño de tu .glb
+                        },
+                        label: { 
+                            text: data.id, 
+                            font: '10pt sans-serif',
+                            fillColor: Cesium.Color.WHITE,
+                            outlineColor: Cesium.Color.BLACK,
+                            outlineWidth: 2,
+                            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                            pixelOffset: new Cesium.Cartesian2(0, -20) 
                         }
-                        // model: {
-                        //     uri: 'ruta/a/tu/modelo_coche.glb', // Puedes usar un punto si no tienes modelo
-                        //     minimumPixelSize: 64
-                        // },
-                        // label: { text: data.id, pixelOffset: new Cesium.Cartesian2(0, -20) }
                     });
                 } else {
                     // Actualizar posición y rotación en tiempo real
                     // vehicles[data.id].position = position;
                     const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
                     viewer.entities.getById(data.id).position = position;
-                    // vehicles[data.id].orientation = Cesium.Transforms.headingPitchRollQuaternion(
-                    //     position,
-                    //     new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
-                    // );
-                }
+                    viewer.entities.getById(data.id).orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                        position,
+                        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                    );
 
-
-
-            }
-                
-                // data.vehicles.forEach(veh => {
-                //     const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
                     
-                //     if (!vehicles[veh.properties.id]) {
-                //         // Crear el vehículo si no existe
-                //         vehicles[veh.properties.id] = viewer.entities.add({
-                //             id: veh.properties.id,
-                //             position: position,
-                //             // Orientación basada en el ángulo de SUMO
-                //             orientation: Cesium.Transforms.headingPitchRollQuaternion(
-                //                 position,
-                //                 new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
-                //             ),
-                //             model: {
-                //                 uri: 'ruta/a/tu/modelo_coche.glb', // Puedes usar un punto si no tienes modelo
-                //                 minimumPixelSize: 64
-                //             },
-                //             label: { text: veh.id, pixelOffset: new Cesium.Cartesian2(0, -20) }
-                //         });
-                //     } else {
-                //         // Actualizar posición y rotación en tiempo real
-                //         vehicles[veh.properties.id].position = position;
-                //         vehicles[veh.properties.id].orientation = Cesium.Transforms.headingPitchRollQuaternion(
-                //             position,
-                //             new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
-                //         );
-                //     }
-                // });
-
-                // Limpiar vehículos que ya no están en la simulación
-                // (Opcional: comparar IDs actuales con los del diccionario)
-                // };
-
+                }
+            }
         }
     </script>
 </body>
