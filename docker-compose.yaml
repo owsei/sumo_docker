@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: dockerfile_nginx
     ports:
-      - "80:80"
+      - "87:80"
     # depends_on:
     #   - fastapi
     networks:
