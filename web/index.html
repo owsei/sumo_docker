@@ -26,6 +26,7 @@
         <button onclick="runSimulationWindows()" id="simBtn" disabled>Iniciar Simulación</button>
         <button onclick="runSimulationTraci()" id="simTraciBtn" disabled>Iniciar Simulación Traci</button>
         <button onclick="runSimulationLinux()" id="simLinuxBtn" disabled>Iniciar Simulación Linux</button>
+        <button onclick="runSimulationWebsocket()" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
 
         <div id="loading" style="display:none; color:yellow;">Generando mapa y simulando tráfico...</div>
     </div>
@@ -50,6 +51,8 @@
             destination: Cesium.Cartesian3.fromDegrees(-1.872093,42.912304, 3000),
             duration: 0
         });
+
+        let vehicleEntities = {};
 
         const roadStyles = {
             'highway.motorway': { color: Cesium.Color.BLUE, width: 4 },
@@ -167,6 +170,7 @@
             document.getElementById('simBtn').disabled = false;
             document.getElementById('simTraciBtn').disabled = false;  
             document.getElementById('simLinuxBtn').disabled = false;  
+            document.getElementById('simWebsocketBtn').disabled = false;  
             firstPoint = null; // Reiniciar para una nueva selección
         }
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -429,83 +433,6 @@
             }
         }
 
-        async function runSimulationTraci() {
-            if (!bounds) return;
-            viewer.entities.remove(rectangleEntity);
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north),
-                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
-                
-            };
-            try {
-                mostrarSpinner();
-                const response = await fetch('http://localhost:8000/run-simulation', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                console.log('Simulación completada:', data);
-
-
-                const startTime = Cesium.JulianDate.now();
-                
-                // Diccionario para guardar las entidades de los coches
-                let vehicleEntities = {};
-                datosVehiculos = data.data.features;
-                console.log('Datos de vehículos:', datosVehiculos);
-
-                ocultarSpinner();
-                i=0;
-                datosVehiculos.forEach(veh => {
-                    const coordenadas = veh.geometry.coordinates; 
-                    if (!vehicleEntities[veh.properties.id]) {
-                        // Si el coche no existe, lo creamos
-                        vehicleEntities[veh.properties.id] = viewer.entities.add({
-                            id: veh.properties.id,
-                            position: Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]),
-                            point: { 
-                                id: veh.properties.id,
-                                pixelSize: 15, 
-                                color: Cesium.Color.RED ,clampToGround: true,
-                                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
-                                disableDepthTestDistance: Number.POSITIVE_INFINITY 
-                            },  
-
-                        });
-                    }
-                    else {
-                        // Añadimos la posición en este paso de tiempo
-                        const position = Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]);
-                        viewer.entities.getById(veh.properties.id).position = position;
-                        viewer.entities.getById(veh.properties.id).point = { pixelSize: 15, color: Cesium.Color.RED ,clampToGround: true}; 
-                        console.log(viewer.entities.getById(veh.properties.id));   
-
-                        //vehicleEntities[veh.id].position.addSample(time, position);
-                    }
-                    i++
-                    console.log(i);
-                    sleep(500);
-
-                });
-                
-                
-            } catch (error) {
-                ocultarSpinner();
-                console.error('Error:', error);
-            }
-            finally {
-                ocultarSpinner();
-                console.log('Simulación completada');
-                document.getElementById('simTraciBtn').disabled = false;
-            }
-        }
-
         async function runSimulationLinux() {
             if (!bounds) return;
             viewer.entities.remove(rectangleEntity);
@@ -560,6 +487,172 @@
                 ocultarSpinner();
                 document.getElementById('loading').style.display = 'none';
             }
+        }
+
+        async function runSimulationTraci() {
+            if (!bounds) return;
+            viewer.entities.remove(rectangleEntity);
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
+                
+            };
+            try {
+                mostrarSpinner();
+                const response = await fetch('http://localhost:8000/run-simulation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Simulación completada:', data);
+
+
+                const startTime = Cesium.JulianDate.now();
+                
+                // Diccionario para guardar las entidades de los coches
+                vehicleEntities = {};
+                datosVehiculos = data.data.features;
+                console.log('Datos de vehículos:', datosVehiculos);
+
+                ocultarSpinner();
+                i=0;
+                datosVehiculos.forEach(veh => {
+                    setTimeout(() => {
+                        animarVehiculos(veh);
+                    }, 3000);
+                });
+                
+                
+            } catch (error) {
+                ocultarSpinner();
+                console.error('Error:', error);
+            }
+            finally {
+                ocultarSpinner();
+                console.log('Simulación completada');
+                document.getElementById('simTraciBtn').disabled = false;
+            }
+        }
+
+        function animarVehiculos(veh){
+            const coordenadas = veh.geometry.coordinates; 
+            if (!vehicleEntities[veh.properties.id]) {
+                // Si el coche no existe, lo creamos
+                vehicleEntities[veh.properties.id] = viewer.entities.add({
+                    id: veh.properties.id,
+                    position: Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]),
+                    point: { 
+                        id: veh.properties.id,
+                        pixelSize: 15, 
+                        color: Cesium.Color.RED ,clampToGround: true,
+                        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY 
+                    }
+                });
+            }
+            else {
+                // Añadimos la posición en este paso de tiempo
+                const position = Cesium.Cartesian3.fromDegrees(coordenadas[0], coordenadas[1]);
+                viewer.entities.getById(veh.properties.id).position = position;
+            }
+        }   
+
+        
+    
+        async function runSimulationWebsocket() {
+            if (!bounds) return;
+            // Eliminar el rectángulo de la selección
+            viewer.entities.remove(rectangleEntity);
+
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
+                
+            };
+
+            const socket = new WebSocket('ws://localhost:8000/ws/simulation?bbox='+JSON.stringify(payload));
+            const vehicles = {}; // Diccionario para rastrear entidades
+
+            socket.onopen = () => {
+                console.log('Conectado al servidor');
+            };
+    
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log('Datos de vehículos:', data);
+
+                if (!vehicles[veh.properties.id]) {
+                    // Crear el vehículo si no existe
+                    vehicles[veh.properties.id] = viewer.entities.add({
+                        id: veh.properties.id,
+                        position: position,
+                        // Orientación basada en el ángulo de SUMO
+                        orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                            position,
+                            new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
+                        ),
+                        model: {
+                            uri: 'ruta/a/tu/modelo_coche.glb', // Puedes usar un punto si no tienes modelo
+                            minimumPixelSize: 64
+                        },
+                        label: { text: veh.id, pixelOffset: new Cesium.Cartesian2(0, -20) }
+                    });
+                } else {
+                    // Actualizar posición y rotación en tiempo real
+                    vehicles[veh.properties.id].position = position;
+                    vehicles[veh.properties.id].orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                        position,
+                        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
+                    );
+                }
+
+
+
+            }
+                
+                // data.vehicles.forEach(veh => {
+                //     const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
+                    
+                //     if (!vehicles[veh.properties.id]) {
+                //         // Crear el vehículo si no existe
+                //         vehicles[veh.properties.id] = viewer.entities.add({
+                //             id: veh.properties.id,
+                //             position: position,
+                //             // Orientación basada en el ángulo de SUMO
+                //             orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                //                 position,
+                //                 new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
+                //             ),
+                //             model: {
+                //                 uri: 'ruta/a/tu/modelo_coche.glb', // Puedes usar un punto si no tienes modelo
+                //                 minimumPixelSize: 64
+                //             },
+                //             label: { text: veh.id, pixelOffset: new Cesium.Cartesian2(0, -20) }
+                //         });
+                //     } else {
+                //         // Actualizar posición y rotación en tiempo real
+                //         vehicles[veh.properties.id].position = position;
+                //         vehicles[veh.properties.id].orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                //             position,
+                //             new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
+                //         );
+                //     }
+                // });
+
+                // Limpiar vehículos que ya no están en la simulación
+                // (Opcional: comparar IDs actuales con los del diccionario)
+                // };
+
         }
     </script>
 </body>
