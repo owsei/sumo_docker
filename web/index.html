@@ -590,30 +590,39 @@
             socket.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 console.log('Datos de vehículos:', data);
-
-                if (!vehicles[veh.properties.id]) {
+                const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
+                if (!vehicles[data.id]) {
                     // Crear el vehículo si no existe
-                    vehicles[veh.properties.id] = viewer.entities.add({
-                        id: veh.properties.id,
+                    vehicles[data.id] = viewer.entities.add({
+                        id: data.id,
                         position: position,
                         // Orientación basada en el ángulo de SUMO
-                        orientation: Cesium.Transforms.headingPitchRollQuaternion(
-                            position,
-                            new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
-                        ),
-                        model: {
-                            uri: 'ruta/a/tu/modelo_coche.glb', // Puedes usar un punto si no tienes modelo
-                            minimumPixelSize: 64
-                        },
-                        label: { text: veh.id, pixelOffset: new Cesium.Cartesian2(0, -20) }
+                        // orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                        //     position,
+                        //     new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                        // ),
+                        point: { 
+                            id: data.id,
+                            pixelSize: 15, 
+                            color: Cesium.Color.RED ,clampToGround: true,
+                            heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY 
+                        }
+                        // model: {
+                        //     uri: 'ruta/a/tu/modelo_coche.glb', // Puedes usar un punto si no tienes modelo
+                        //     minimumPixelSize: 64
+                        // },
+                        // label: { text: data.id, pixelOffset: new Cesium.Cartesian2(0, -20) }
                     });
                 } else {
                     // Actualizar posición y rotación en tiempo real
-                    vehicles[veh.properties.id].position = position;
-                    vehicles[veh.properties.id].orientation = Cesium.Transforms.headingPitchRollQuaternion(
-                        position,
-                        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(veh.angle), 0, 0)
-                    );
+                    // vehicles[data.id].position = position;
+                    const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
+                    viewer.entities.getById(data.id).position = position;
+                    // vehicles[data.id].orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                    //     position,
+                    //     new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                    // );
                 }
 
 

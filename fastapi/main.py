@@ -666,6 +666,7 @@ async def websocket_simulation(websocket: WebSocket):
                 
                 vehicles_at_step = []
                 for veh in vehicle_ids:
+                    
                     # Obtener posición (x, y) en la proyección de SUMO
                     x, y = traci.vehicle.getPosition(veh)
                     
@@ -676,14 +677,16 @@ async def websocket_simulation(websocket: WebSocket):
                     speed = traci.vehicle.getSpeed(veh)
                     angle = traci.vehicle.getAngle(veh)
                     
-                    await websocket.send_json({
-                        "vehicle": veh,
+                    vehiculo={
+                        "id": veh,
                         "longitude": lon,
                         "latitude": lat,
                         "speed": speed,
                         "angle": angle,
                         "time": step
-                    })
+                    }
+
+                    await websocket.send_json(vehiculo)
                 
                 step += 1
             
