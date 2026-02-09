@@ -48,9 +48,15 @@
         let bounds = null;
 
         viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(-1.872093,42.912304, 3000),
+            destination: Cesium.Cartesian3.fromDegrees(-1.872093,42.912304, 5000),
             duration: 0
         });
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(-1.603712,42.813916, 5000),
+            duration: 0
+        });
+
 
         let vehicleEntities = {};
 
@@ -501,7 +507,7 @@
                 east: Cesium.Math.toDegrees(bounds.east),
                 north: Cesium.Math.toDegrees(bounds.north),
                 // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
+                road_types: ["motorway", "motorway_link","motorway_junction", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
                 
             };
 

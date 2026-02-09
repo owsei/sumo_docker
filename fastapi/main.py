@@ -39,7 +39,7 @@ def download_osm_data(bbox: BoundingBox, output_path: str):
     types_filter = "|".join(bbox.road_types)
     print("Filtros de tipos: ", types_filter)
     # Overpass usa el orden: south, west, north, east
-    overpass_url = "https://overpass-api.de/api/interpreter"
+    overpass_url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
     # Esta query descarga solo las vías (ways) que coincidan con los tipos
     # y también los nodos (nodes) que forman esas vías.
     query = f"""
@@ -620,7 +620,7 @@ async def websocket_simulation(websocket: WebSocket):
             "-n", net_file,
             "-r", route_file,
             "-e", "3600",  # Simular 3600 segundos de tráfico
-            "--period", "0.5" # Aparece un coche cada 0.5 segundos
+            "--period", "0.3" # Aparece un coche cada 0.5 segundos
         ], check=True)  
         print("Tráfico generado correctamente")
         await websocket.send_json({"mensaje":"Tráfico generado correctamente"})
@@ -657,7 +657,7 @@ async def websocket_simulation(websocket: WebSocket):
             traci.start([
                 "/usr/share/sumo/bin/sumo",
                 "-c", config_file,
-                "--step-length", "1",  # 1 segundo por paso
+                "--step-length", "0.3",  # 1 segundo por paso
                 "--no-warnings", "true"
             ])
             
