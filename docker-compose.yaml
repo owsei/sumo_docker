@@ -1,7 +1,7 @@
 services:
-  fastapi:
-    hostname: fastapi
-    container_name: fastapi
+  fastapi_sumo:
+    hostname: fastapix_sumo
+    container_name: fastapix_sumo
     build:
       context: .
       dockerfile: dockerfile_sumo_fastapi
@@ -12,21 +12,21 @@ services:
     stdin_open: true
     tty: true
     networks:
-      - fiware
+      - fiware-sumo
 
-  nginx_server:
-    hostname: nginx
-    container_name: nginx
+  nginx_server_sumo:
+    hostname: nginx_sumo
+    container_name: nginx_sumo
     build:
       context: .
       dockerfile: dockerfile_nginx
     ports:
-      - "87:80"
+      - "90:80"
     # depends_on:
     #   - fastapi
     networks:
-      - fiware
+      - fiware-sumo
 
 networks:
-  fiware:
+  fiware-sumo:
     driver: bridge

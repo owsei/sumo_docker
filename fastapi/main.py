@@ -493,8 +493,6 @@ def generate_xml(bbox: BoundingBox):
             # nod_file = os.path.join(tmpdir, "mapa.nod.xml")
             # edg_file = os.path.join(tmpdir, "mapa.edg.xml")
 
-            PORT = 8816
-            
             # 1. Descarga (usando el método de requests que vimos antes)
             print("Descargando datos de OSM")
             download_osm_data(bbox, osm_file)
