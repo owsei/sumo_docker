@@ -14,19 +14,25 @@ RUN apt-get update && apt-get install -y \
     sumo sumo-tools python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# 2. Copiar redes de carreteras
+WORKDIR /tmp
+COPY ./red_carreteras/navarra.net.xml /tmp/navarra.net.xml
+COPY ./red_carreteras/pamplona_v1.net.xml /tmp/pamplona_v1.net.xml
+
+# 3. Instalar FastAPI
 RUN echo "Instalando Fastapi"
 RUN pip install "fastapi[standard]"
 
-# 2. Configurar el entorno de Python
+# 4. Configurar el entorno de Python
 WORKDIR /code
 COPY ./fastapi/requirements.txt /code/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 COPY ./fastapi/ /code/app
 
-# 3. Copiar el código de la API y mapas
+# 5. Copiar el código de la API y mapas
 COPY . .
 
-# Exponer el puerto de FastAPI
+# 6. Exponer el puerto de FastAPI
 EXPOSE 8000
 
 CMD ["fastapi", "run", "app/main.py", "--port", "8000"]
