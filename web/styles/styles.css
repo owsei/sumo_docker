@@ -35,7 +35,7 @@
 
 .floating-layer {
     position: absolute;
-    top: 70px;
+    top: 120px;
     left: 10px;
     width: 400px;
     height: 70%;
@@ -44,7 +44,6 @@
     padding: 10px;
     border-radius: 8px;
     z-index: 100; /* Se asegura de que esté por encima */
-    
 }
 
 .properties-floating-layer {

@@ -23,10 +23,12 @@
 <body>
     <div id="toolbar">
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
-        <button onclick="getRoads()" id="getRoadsBtn" disabled>Descargar carreteras</button>
-        <button onclick="getRoadsWebsocket()" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
-        <button onclick="runSimulationWebsocket()" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
-        <button onclick="testWebsocket()" id="testWebsocketBtn">Probar Websocket</button>
+        <button onclick="getRoads()" class="btn btn-primary" id="getRoadsBtn" disabled>Descargar carreteras</button>
+        <button onclick="getRoadsWebsocket()" class="btn btn-primary" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
+        <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
+        <button onclick="testWebsocket()" class="btn btn-primary" id="testWebsocketBtn">Probar Websocket</button>
+
+        <button onclick="removeForbiddenRoads()" class="btn btn-primary" id="removeForbiddenRoadsBtn" disabled>Quitar prohibición de carreteras</button>
 
         <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
     </div>
@@ -34,6 +36,41 @@
 
     <div id="spinnerOverlay" class="spinner-overlay">
         <div class="spinner"></div>
+    </div>
+
+    <div id="layer" class="floating-layer">
+        <div class="accordion accordion-flush" id="accordionFlushExample">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-headingOne">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseOne" aria-expanded="false" aria-controls="flush-collapseOne">
+                    Calles prohibidas
+                </button>
+                </h2>
+                <div id="flush-collapseOne" class="accordion-collapse collapse" aria-labelledby="flush-headingOne" data-bs-parent="#accordionFlushExample">
+                <div class="accordion-body"><div id="forbiddenRoads"></div></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-headingTwo">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo" aria-expanded="false" aria-controls="flush-collapseTwo">
+                    Calles permitidas
+                </button>
+                </h2>
+                <div id="flush-collapseTwo" class="accordion-collapse collapse" aria-labelledby="flush-headingTwo" data-bs-parent="#accordionFlushExample">
+                <div class="accordion-body"><div id="allowedRoads"></div></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-headingThree">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseThree" aria-expanded="false" aria-controls="flush-collapseThree">
+                    Simulación
+                </button>
+                </h2>
+                <div id="flush-collapseThree" class="accordion-collapse collapse" aria-labelledby="flush-headingThree" data-bs-parent="#accordionFlushExample">
+                <div class="accordion-body">Placeholder content for this accordion, which is intended to demonstrate the <code>.accordion-flush</code> class. This is the third item's accordion body. Nothing more exciting happening here in terms of content, but just filling up the space to make it look, at least at first glance, a bit more representative of how this would look in a real-world application.</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -48,17 +85,19 @@
         let bounds = null;
 
         viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(-1.872093,42.912304, 5000),
-            duration: 0
-        });
-
-        viewer.camera.flyTo({
             destination: Cesium.Cartesian3.fromDegrees(-1.603712,42.813916, 5000),
             duration: 0
         });
 
+        let isDragging = false;
+        let startPosition = null;
+        let endPosition = null;
+        let floatingRectangle = null;
 
         let vehicleEntities = {};
+        let roadsEntities = {};
+
+        let forbiddenRoads = {};
 
         const roadStyles = {
             'highway.motorway': { color: Cesium.Color.BLUE, width: 4 },
@@ -88,6 +127,16 @@
             document.getElementById('spinnerOverlay').style.display = 'none';
         }
 
+        function setForbiddenRoads(idRoad){
+            alert(idRoad);
+            // forbiddenRoads.add(idRoad);
+
+        }
+
+        function removeForbiddenRoads(){
+            forbiddenRoads.clear();
+        }
+
         function getVelocityStyle(velocity) {
 
             if (velocity>119) {
@@ -109,26 +158,28 @@
 
         function createPropertiesPanel(properties) {
     
-            let descrip = `<table class="tablePorperties">`;
+            let descrip = `<table id="tablaProperties${properties.id}"  class="tablePorperties">`;
             for (const [key, value] of Object.entries(properties)) {
-            if (key === 'enlace'|| key === 'url' || key === 'link' || key === 'source') {
-                // Si el valor es un enlace, lo formateamos como un enlace HTML
-                descrip = descrip + `<tr class="trproper">
-                                        <td>Enlace</td>
-                                        <td class="tdproper">
-                                        <a href="${value}" target="_blank">Ir a Catastro</a>
-                                        </td>
-                                    </tr>`;
+                if (key === 'enlace'|| key === 'url' || key === 'link' || key === 'source') {
+                    // Si el valor es un enlace, lo formateamos como un enlace HTML
+                    descrip = descrip + `<tr class="trproper">
+                                            <td>Enlace</td>
+                                            <td class="tdproper">
+                                            <a href="${value}" target="_blank">Ir a Catastro</a>
+                                            </td>
+                                        </tr>`;
+                }
+                else{
+                    descrip = descrip + `<tr class="trproper">
+                                            <td class="tdproper">${key}</td>
+                                            <td class="tdproper"> ${value}</td>
+                                        </tr>`;
+                }
+                
             }
-            else{
-                descrip = descrip + `<tr class="trproper">
-                                        <td class="tdproper">${key}</td>
-                                        <td class="tdproper"> ${value}</td>
-                                    </tr>`;
-            }
-            
-            }
+            descrip = descrip + `<tr><td><button id="btn${properties.id}">Prohibir⛔</button></td></tr>`;
             descrip = descrip + '</table>';
+
             return descrip;
         }
 
@@ -205,6 +256,108 @@
             }
         }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
+        // handler.setInputAction(function(click) {
+        //     // Desactivamos la cámara para poder arrastrar sin mover el mapa
+        //     viewer.scene.screenSpaceCameraController.enableInputs = false;
+        //     if (rectangleEntity) viewer.entities.remove(rectangleEntity);
+        //     const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+        //     if (!startPosition) {
+        //         startPosition = Cesium.Cartographic.fromCartesian(cartesian);
+        //         firstPoint = viewer.entities.add({
+        //             position: startPosition,
+        //             point: {
+        //                 pixelSize: 10,
+        //                 color: Cesium.Color.BLUE,    
+        //                 heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        //                 outline: true,
+        //                 outlineColor: Cesium.Color.BLUE,
+        //                 outlineWidth: 2
+        //             }
+        //         });
+        //     }
+        //     else {
+        //         endPosition = Cesium.Cartographic.fromCartesian(cartesian);
+        //         secondPoint = viewer.entities.add({
+        //             position: endPosition,
+        //             point: {
+        //                 pixelSize: 10,
+        //                 color: Cesium.Color.BLUE,    
+        //                 heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        //                 outline: true,
+        //                 outlineColor: Cesium.Color.BLUE,
+        //                 outlineWidth: 2
+        //             }
+        //         });
+        //     }
+
+        //     if (startPosition && endPosition) {
+        //         bounds = {
+        //             west: Math.min(startPosition.longitude, endPosition.longitude),
+        //             south: Math.min(startPosition.latitude, endPosition.latitude),
+        //             east: Math.max(startPosition.longitude, endPosition.longitude),
+        //             north: Math.max(startPosition.latitude, endPosition.latitude)
+        //         };
+
+        //         // Dibujar el rectángulo en el mapa
+        //         if (rectangleEntity) viewer.entities.remove(rectangleEntity);
+
+        //         rectangleEntity = viewer.entities.add({
+        //             rectangle: {
+        //                 coordinates: Cesium.Rectangle.fromRadians(bounds.west, bounds.south, bounds.east, bounds.north),
+        //                 material: Cesium.Color.CYAN.withAlpha(0.4),
+        //                 outline: true,
+        //                 outlineColor: Cesium.Color.CYAN
+        //             }
+        //         });
+
+        //         document.getElementById('getRoadsBtn').disabled = false;
+        //         document.getElementById('getRoadsWebsocketBtn').disabled = false;
+        //         document.getElementById('simWebsocketBtn').disabled = false;
+
+        //         startPosition = null;
+        //         endPosition = null;
+        //     }   
+
+        //     isDragging = true;
+        //     console.log("startPosition", startPosition);
+            
+        // }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
+
+        // 2. Al mover el ratón (Dibujar el área visual)
+        // handler.setInputAction(function(movement) {
+            
+        //     if (!startPosition) return;
+            
+        //     const currentPosition = viewer.camera.pickEllipsoid(movement.endPosition, viewer.scene.globe.ellipsoid);
+        //     if (!currentPosition) return;
+
+        //     const rectangle = Cesium.Rectangle.fromCartographicArray([
+        //         Cesium.Cartographic.fromCartesian(startPosition),
+        //         Cesium.Cartographic.fromCartesian(currentPosition)
+        //     ]);
+
+        //     // Crear o actualizar el rectángulo visual rojo
+        //     if (!floatingRectangle) {
+        //         floatingRectangle = viewer.entities.add({
+        //             rectangle: {
+        //                 coordinates: new Cesium.CallbackProperty(() => floatingRectangle._lastRect, false),
+        //                 material: Cesium.Color.RED.withAlpha(0.3),
+        //                 outline: true,
+        //                 outlineColor: Cesium.Color.RED
+        //             }
+        //         });
+        //     }
+
+        //     floatingRectangle._lastRect = rectangle;
+
+        //     if(endPosition) {
+        //         viewer.entities.remove(floatingRectangle);
+        //         floatingRectangle = null;
+        //     }
+        // }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+
+        
         function crearLineString(datosLineString,altura=0) {
             const coordenadas = datosLineString.geometry.coordinates; 
             const posiciones = coordenadas.map(coord => {
@@ -215,7 +368,15 @@
             const velocityStyle = getVelocityStyle(datosLineString.properties.velocidad_max);
             
             viewer.entities.add({
-            description: createPropertiesPanel(datosLineString.properties),
+            description: `
+                        <div>
+                            <p>Información de la entidad</p>
+                            <p>ID: ${datosLineString.properties.id}</p>
+                            <button id="btn_${datosLineString.properties.id}" onmouseover="alert(${datosLineString.properties.id})"  class="cesium-button">
+                                Prohibir⛔
+                            </button>
+                        </div>
+                    `,
             polyline: {
                 positions: posiciones,
                 material : velocityStyle,
@@ -223,6 +384,26 @@
                 clampToGround: true // Para que la línea se ajuste al terreno
             }
             });
+            
+
+            // document.getElementById('btn_'+datosLineString.properties.id).addEventListener('click', function(e) {
+            //     // Compruebas si el elemento clicado tiene un ID que empieza por "btn"
+            //     if (e.target && e.target.id.startsWith('btn_')) {
+            //         // Extraes el ID eliminando la palabra 'btn'
+            //         const idPropiedad = e.target.id.replace('btn_', '');
+                    
+            //         alert(idPropiedad);
+            //         setForbiddenRoads(idPropiedad);
+            //     }
+            // });
+
+            // botonProhibir = '<tr><td><button id="btn' + datosLineString.properties.id + '">Prohibir⛔</button></td></tr>';
+            // tabla=document.getElementById('tablaProperties'+datosLineString.properties.id);
+            // tabla.innerHTML += botonProhibir;
+            // document.getElementById('btn' + datosLineString.properties.id).addEventListener('click', function() {
+            //     alert(datosLineString.properties.id);
+            //     setForbiddenRoads(datosLineString.properties.id);
+            // });
         }
 
         // LLAMADAS A LA APIs
@@ -315,20 +496,22 @@
             socket.onopen = () => {
                 console.log('Conectado al servidor');
             };
+
             socket.onmessage = function(event) {
                 const data = JSON.parse(event.data);
-                if (data.mensaje)    {
+                if (data.mensaje){
                     messageWebsocket(data);
                     return;
                 }
                 
                 crearLineString(data);
-
+                objeto=document.getElementById("btn_"+data.properties.id);
+                // document.getElementById("btn_"+data.properties.id).addEventListener('click',function ()
+                // {
+                //     alert(data.properties.id);
+                // }); 
             }
-
-
-
-        }
+        }   
 
         // Run simulation websocket
         async function runSimulationWebsocket() {

@@ -200,7 +200,35 @@ async def convert_to_websocket(simulation_data: List[Dict]) -> Dict:
             }
             await websocket.send_json({feature})  
     
+async def sendCreateRoads(net_file):
+    net = sumolib.net.readNet(net_file)
+    for edge in net.getEdges():
+        # Obtenemos la geometría (forma) de la carretera
+        # Convertimos las coordenadas internas de SUMO a Lon/Lat
+        shape = edge.getShape()
+        coords = [net.convertXY2LonLat(x, y) for x, y in shape]
 
+        # Extraemos las propiedades que queremos
+        # Nota: edge.getName() devuelve el nombre de la calle de OSM
+        properties = {
+            "id": edge.getID(),
+            "nombre": edge.getName() or "Calle sin nombre",
+            "tipo": edge.getType(),
+            "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
+            "carriles": edge.getLaneNumber(),
+            
+        }
+
+        feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": coords
+            },
+            "properties": properties
+        }
+        await websocket.send_json(feature)
+    
 
 @app.get("/")
 async def root():
@@ -443,6 +471,7 @@ async def get_roads_websocket(websocket: WebSocket):
     with tempfile.TemporaryDirectory() as tmpdir:
         osm_file = os.path.join(tmpdir, "mapa.osm.xml")
         net_file = os.path.join(tmpdir, "mapa.net.xml")
+        net_file = os.path.join(tmpdir, "pamplona_v1.net.xml")
 
         try:
             # 1. Descarga (usando el método de requests que vimos antes)
