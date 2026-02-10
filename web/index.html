@@ -22,11 +22,9 @@
 <body>
     <div id="toolbar">
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
-        <button onclick="sendToBackend()" id="sendBtn" disabled>Enviar coordenadas</button>
-        <button onclick="runSimulationWindows()" id="simBtn" disabled>Iniciar Simulación</button>
-        <button onclick="runSimulationTraci()" id="simTraciBtn" disabled>Iniciar Simulación Traci</button>
-        <button onclick="runSimulationLinux()" id="simLinuxBtn" disabled>Iniciar Simulación Linux</button>
+        <button onclick="getRoads()" id="getRoadsBtn" disabled>Descargar carreteras</button>
         <button onclick="runSimulationWebsocket()" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
+        <button onclick="testWebsocket()" id="testWebsocketBtn">Probar Websocket</button>
 
         <div id="loading" style="display:block; color:yellow;"></div>
     </div>
@@ -172,10 +170,7 @@
                 }
             });
 
-            document.getElementById('sendBtn').disabled = false;
-            document.getElementById('simBtn').disabled = false;
-            document.getElementById('simTraciBtn').disabled = false;  
-            document.getElementById('simLinuxBtn').disabled = false;  
+            document.getElementById('getRoadsBtn').disabled = false;
             document.getElementById('simWebsocketBtn').disabled = false;  
             firstPoint = null; // Reiniciar para una nueva selección
         }
@@ -212,7 +207,7 @@
             });
         }
 
-        async function sendToBackend() {
+        async function getRoads() {
             if (!bounds) return;
             viewer.entities.remove(rectangleEntity);
             const payload = {
@@ -547,7 +542,7 @@
                     } else if (random_number === 5) {
                         URI_Coche = "coches/cocheAmarilloCubo.glb";
                     } else if (random_number === 6) {
-                        URI_Coche = "coches/cocheNaranjaCubo.glb";
+                        URI_Coche = "coches/cocheMoradoCubo.glb";
                     } else if (random_number === 7) {
                         URI_Coche = "coches/cocheNegroCubo.glb"
                     }
@@ -600,6 +595,35 @@
 
                     
                 }
+            }
+        }
+
+        function testWebsocket() {
+            
+            if (!bounds) return;
+            // Eliminar el rectángulo de la selección
+            viewer.entities.remove(rectangleEntity);
+            
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link","motorway_junction", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
+                
+            };
+            const socket = new WebSocket('ws://localhost:8000/ws/getRoads?bbox='+JSON.stringify(payload));
+            socket.onopen = () => {
+                console.log('Conectado al servidor');
+            };
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.mensaje ) {
+                    document.getElementById('loading').innerHTML = data.mensaje;
+                    return;
+                }
+                console.log('Datos de vehículos:', data);
             }
         }
     </script>

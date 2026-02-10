@@ -87,7 +87,7 @@ def generate_traffic(sumo_home, net_file, route_file):
         "-n", net_file,
         "-r", route_file,
         "-e", "3600",  # Simular 3600 segundos de tráfico
-        "--period", "0.5" # Aparece un coche cada 0.5 segundos
+        "--period", "10" # Aparece un coche cada 0.5 segundos
     ], check=True)
     
 def wait_for_file(filepath, timeout=10):
@@ -174,6 +174,29 @@ def convert_to_geojson_traci(simulation_data: List[Dict]) -> Dict:
         "features": features
     }
 
+async def convert_to_websocket(simulation_data: List[Dict]) -> Dict:
+    """Convierte los datos de simulación a GeoJSON para Cesium"""
+    features = []
+    
+    for step_data in simulation_data:
+        for vehicle in step_data["vehicles"]:
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [vehicle["longitude"], vehicle["latitude"]]
+                },
+                "properties": {
+                    "id": vehicle["id"],
+                    "speed": vehicle["speed"],
+                    "angle": vehicle["angle"],
+                    "time": vehicle["time"]
+                }
+            }
+            await websocket.send_json({feature})  
+    
+
+
 @app.get("/")
 async def root():
     return {"status": "ok"}
@@ -216,342 +239,6 @@ async def get_roads(bbox: BoundingBox):
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/simulate")
-async def start_simulation(bbox: BoundingBox):
-
-    session_id = str(uuid.uuid4())
-    sumo_home = os.environ.get("SUMO_HOME")
-    if not sumo_home:
-        # Intenta buscar la ruta por defecto si no está la variable
-        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        osm_file = os.path.join(tmpdir, "mapa.osm.xml")
-        net_file = os.path.join(tmpdir, "mapa.net.xml")
-        route_file = os.path.join(tmpdir, "mapa.rou.xml")
-        # nod_file = os.path.join(tmpdir, "mapa.nod.xml")
-        # edg_file = os.path.join(tmpdir, "mapa.edg.xml")
-
-        PORT = 8816
-        
-        # 1. Descarga (usando el método de requests que vimos antes)
-        download_osm_data(bbox, osm_file)
-        sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
-        
-        # 2. Generar red de SUMO
-        # generate_net(sumo_home, bbox)
-        procesoNet=subprocess.run([
-            os.path.join(sumo_home, "bin", "netconvert"),
-            "--osm-files", osm_file,
-            "--output-file", net_file,
-            "--geometry.remove", "true",
-            "--proj.utm", "true",
-            "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-            "--remove-edges.isolated", "true"
-        ], check=True)
-
-
-        # generate_traffic(sumo_home, net_file, route_file)
-        # 3. Generar tráfico aleatorio
-        random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
-        procesoTraffic=subprocess.run([
-            "python", random_trips,
-            "-n", net_file,
-            "-r", route_file,
-            "-e", "3600",  # Simular 3600 segundos de tráfico
-            "--period", "0.5" # Aparece un coche cada 0.5 segundos
-        ], check=True)  
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        net_file = os.path.join(tmpdir, "mapa.net.xml")
-        route_file = os.path.join(tmpdir, "mapa.rou.xml")
-        
-        # Iniciar simulación en segundo plano (sin interfaz gráfica)
-        sumoExe = checkBinary("sumo-gui") if len(sys.argv) == 1 else checkBinary("sumo")
-        # start the simulation 
-        sumoProcess = subprocess.Popen([sumoExe, "-n", net_file, "-r", route_file," --remote-port", str(PORT)],stdout=sys.stdout, stderr=sys.stderr)
-        traci.init(PORT)
-        simulation_data = []
-        for step in range(100):
-            traci.simulationStep()
-            vehicles = traci.vehicle.getIDList()
-            
-            step_frame = []
-            for veh_id in vehicles:
-                # Convertir coordenadas de SUMO (x,y) a Lon/Lat para Cesium
-                x, y = traci.vehicle.getPosition(veh_id)
-                lon, lat = net.convertXY2LonLat(x, y)
-                
-                step_frame.append({
-                    "id": veh_id,
-                    "lon": lon,
-                    "lat": lat,
-                    "angle": traci.vehicle.getAngle(veh_id) # Útil para orientar el coche en 3D
-                })
-            
-            simulation_data.append({"step": step, "vehicles": step_frame})
-        
-        traci.close()
-        return simulation_data
-        
-        
-        # traci.start(["sumo", "-n", net_file, "-r", route_file])
-        # simulation_data = [] # Aquí guardaremos los pasos
-
-        # for step in range(100): # Simular 100 pasos
-        #     traci.simulationStep()
-        #     vehicles = traci.vehicle.getIDList()
-            
-        #     step_frame = []
-        #     for veh_id in vehicles:
-        #         # Convertir coordenadas de SUMO (x,y) a Lon/Lat para Cesium
-        #         x, y = traci.vehicle.getPosition(veh_id)
-        #         lon, lat = net.convertXY2LonLat(x, y)
-                
-        #         step_frame.append({
-        #             "id": veh_id,
-        #             "lon": lon,
-        #             "lat": lat,
-        #             "angle": traci.vehicle.getAngle(veh_id) # Útil para orientar el coche en 3D
-        #         })
-            
-        #     simulation_data.append({"step": step, "vehicles": step_frame})
-        
-        # traci.close()
-        # return simulation_data
-
-@app.post("/run-simulation")
-async def run_simulation(bbox: BoundingBox):
-    print("Iniciando simulación")
-    try:
-        session_id = str(uuid.uuid4())
-        sumo_home = os.environ.get("SUMO_HOME")
-        if not sumo_home:
-            # Intenta buscar la ruta por defecto si no está la variable
-            sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-        print("Ruta de SUMO encontrada correctamente", sumo_home)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            print("Directorio temporal creado correctamente", tmpdir)
-            osm_file = os.path.join(tmpdir, "mapa.osm.xml")
-            print("Archivo OSM creado correctamente", osm_file)
-            net_file = os.path.join(tmpdir, "mapa.net.xml")
-            print("Archivo NET creado correctamente", net_file)
-            route_file = os.path.join(tmpdir, "mapa.rou.xml")
-            print("Archivo ROUT creado correctamente", route_file)
-            # nod_file = os.path.join(tmpdir, "mapa.nod.xml")
-            # edg_file = os.path.join(tmpdir, "mapa.edg.xml")
-
-            # 1. Descarga (usando el método de requests que vimos antes)
-            print("Descargando datos de OSM")
-            download_osm_data(bbox, osm_file)
-            print("Datos de OSM descargados correctamente")
-            sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
-            
-            # 2. Generar red de SUMO
-            # generate_net(sumo_home, bbox)
-            print("Generando red de SUMO")
-            procesoNet=subprocess.run([
-                os.path.join(sumo_home, "bin", "netconvert"),
-                "--osm-files", osm_file,
-                "--output-file", net_file,
-                "--geometry.remove", "true",
-                "--proj.utm", "true",
-                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-                "--remove-edges.isolated", "true"
-            ], check=True)
-            print("Red generada correctamente")
-
-
-            # generate_traffic(sumo_home, net_file, route_file)
-            # 3. Generar tráfico aleatorio
-            print("Generando tráfico aleatorio")
-            random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
-            procesoTraffic=subprocess.run([
-                "python", random_trips,
-                "-n", net_file,
-                "-r", route_file,
-                "-e", "3600",  # Simular 3600 segundos de tráfico
-                "--period", "0.5" # Aparece un coche cada 0.5 segundos
-            ], check=True)  
-            print("Tráfico generado correctamente")
-
-            # Primero crea el archivo de configuración SUMO
-            print("Creando archivo de configuración SUMO")
-            config_file = os.path.join(tmpdir, "simulation.sumocfg")
-            print("Archivo de configuración SUMO creado correctamente", config_file)
-            
-            # Crear el archivo .sumocfg
-            with open(config_file, 'w') as f:
-                f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
-                    <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.xsd">
-                        <input>
-                            <net-file value="{net_file}"/>
-                            <route-files value="{route_file}"/>
-                        </input>
-                        <time>
-                            <begin value="0"/>
-                            <end value="3600"/>
-                        </time>
-                    </configuration>""")
-
-            print("Archivo de configuración SUMO generado correctamente")
-            
-            # Iniciar SUMO con TraCI
-            sumo_binary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
-            print(sumo_binary)
-            print("Iniciando simulación")
-            traci.start([
-                sumo_binary,
-                "-c", config_file,
-                "--step-length", "1",  # 1 segundo por paso
-                "--no-warnings", "true"
-            ])
-            
-            # Lista para almacenar datos de la simulación
-            simulation_data = []
-            
-            # Ejecutar la simulación paso a paso
-            step = 0
-            max_steps = 3600  # 1 hora de simulación
-            
-            while step < max_steps and traci.simulation.getMinExpectedNumber() > 0:
-                traci.simulationStep()  # Avanzar un paso
-                
-                # Obtener todos los vehículos activos
-                vehicle_ids = traci.vehicle.getIDList()
-                
-                vehicles_at_step = []
-                for veh_id in vehicle_ids:
-                    # Obtener posición (x, y) en la proyección de SUMO
-                    x, y = traci.vehicle.getPosition(veh_id)
-                    
-                    # Convertir a lon/lat (SUMO usa coordenadas proyectadas)
-                    lon, lat = traci.simulation.convertGeo(x, y)
-                    
-                    # Obtener otros datos útiles
-                    speed = traci.vehicle.getSpeed(veh_id)
-                    angle = traci.vehicle.getAngle(veh_id)
-                    
-                    vehicles_at_step.append({
-                        "id": veh_id,
-                        "longitude": lon,
-                        "latitude": lat,
-                        "speed": speed,
-                        "angle": angle,
-                        "time": step
-                    })
-                
-                if vehicles_at_step:
-                    simulation_data.append({
-                        "step": step,
-                        "vehicles": vehicles_at_step
-                    })
-                
-                step += 1
-            
-            # Cerrar TraCI
-            traci.close()
-            print("Simulación finalizada correctamente")
-            
-            # # Convertir a formato GeoJSON para Cesium
-            # geojson_data = convert_to_geojson_traci(simulation_data)
-            # print("Datos convertidos correctamente")
-            
-            # return {
-            #     "status": "success",
-            #     "total_steps": step,
-            #     "data": geojson_data
-            # }
-        
-        
-    except Exception as e:
-        print(f"Error en la simulación:")
-        if traci.isLoaded():
-            traci.close()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def generate_xml(bbox: BoundingBox):
-    try:
-        session_id = str(uuid.uuid4())
-        sumo_home = os.environ.get("SUMO_HOME")
-        if not sumo_home:
-            # Intenta buscar la ruta por defecto si no está la variable
-            sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-        print("Ruta de SUMO encontrada correctamente", sumo_home)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            print("Directorio temporal creado correctamente", tmpdir)
-            osm_file = os.path.join(tmpdir, "mapa.osm.xml")
-            print("Archivo OSM creado correctamente", osm_file)
-            net_file = os.path.join(tmpdir, "mapa.net.xml")
-            print("Archivo NET creado correctamente", net_file)
-            route_file = os.path.join(tmpdir, "mapa.rou.xml")
-            print("Archivo ROUT creado correctamente", route_file)
-            # nod_file = os.path.join(tmpdir, "mapa.nod.xml")
-            # edg_file = os.path.join(tmpdir, "mapa.edg.xml")
-
-            # 1. Descarga (usando el método de requests que vimos antes)
-            print("Descargando datos de OSM")
-            download_osm_data(bbox, osm_file)
-            print("Datos de OSM descargados correctamente")
-            sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
-            
-            # 2. Generar red de SUMO
-            # generate_net(sumo_home, bbox)
-            print("Generando red de SUMO")
-            procesoNet=subprocess.run([
-                os.path.join(sumo_home, "bin", "netconvert"),
-                "--osm-files", osm_file,
-                "--output-file", net_file,
-                "--geometry.remove", "true",
-                "--proj.utm", "true",
-                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-                "--remove-edges.isolated", "true"
-            ], check=True)
-            print("Red generada correctamente")
-
-
-            # generate_traffic(sumo_home, net_file, route_file)
-            # 3. Generar tráfico aleatorio
-            print("Generando tráfico aleatorio")
-            random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
-            procesoTraffic=subprocess.run([
-                "python", random_trips,
-                "-n", net_file,
-                "-r", route_file,
-                "-e", "3600",  # Simular 3600 segundos de tráfico
-                "--period", "0.5" # Aparece un coche cada 0.5 segundos
-            ], check=True)  
-            print("Tráfico generado correctamente")
-
-            # Primero crea el archivo de configuración SUMO
-            print("Creando archivo de configuración SUMO")
-            config_file = os.path.join(tmpdir, "simulation.sumocfg")
-            print("Archivo de configuración SUMO creado correctamente", config_file)
-            
-            # Crear el archivo .sumocfg
-            with open(config_file, 'w') as f:
-                f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
-                    <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.xsd">
-                        <input>
-                            <net-file value="{net_file}"/>
-                            <route-files value="{route_file}"/>
-                        </input>
-                        <time>
-                            <begin value="0"/>
-                            <end value="3600"/>
-                        </time>
-                    </configuration>""")
-
-            print("Archivos de configuración SUMO generados correctamente")
-            return net_file, route_file, config_file
-    
-    except Exception as e:
-        print(f"Error en la generación del archivo XML: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.websocket("/ws/simulation")
 async def websocket_simulation(websocket: WebSocket):
@@ -620,7 +307,7 @@ async def websocket_simulation(websocket: WebSocket):
             "-n", net_file,
             "-r", route_file,
             "-e", "3600",  # Simular 3600 segundos de tráfico
-            "--period", "0.3" # Aparece un coche cada 0.5 segundos
+            "--period", "0.1" # Aparece un coche cada 0.5 segundos
         ], check=True)  
         print("Tráfico generado correctamente")
         await websocket.send_json({"mensaje":"Tráfico generado correctamente"})
@@ -657,7 +344,7 @@ async def websocket_simulation(websocket: WebSocket):
             traci.start([
                 "/usr/share/sumo/bin/sumo",
                 "-c", config_file,
-                "--step-length", "0.3",  # 1 segundo por paso
+                "--step-length", "0.1",  # 1 segundo por paso
                 "--no-warnings", "true"
             ])
             
@@ -705,20 +392,76 @@ async def websocket_simulation(websocket: WebSocket):
             print("Simulación finalizada correctamente")
             await websocket.send_json({"mensaje":"Simulación finalizada correctamente"})
             
-            # Convertir a formato GeoJSON para Cesium
-            # geojson_data = convert_to_geojson_traci(simulation_data)
-            # print("Datos convertidos correctamente")
-            # await websocket.send_json({"mensaje":"Datos convertidos correctamente"})
-            
-            # return {
-            #     "status": "success",
-            #     "total_steps": step,
-            #     "data": geojson_data
-            # }
-
         except Exception as e:
             print(f"Error en la simulación:")
             if traci.isLoaded():
                 traci.close()
             raise HTTPException(status_code=500, detail=str(e))
 
+@app.websocket("/ws/getRoads")
+async def get_roads_websocket(websocket: WebSocket):
+    await websocket.accept()
+    bbox_str = websocket.query_params.get("bbox")
+    if not bbox_str:
+        await websocket.send_json({"error": "No se proporcionó bbox"})
+        return
+    try:
+        bbox = BoundingBox(**json.loads(bbox_str))
+    except json.JSONDecodeError:
+        await websocket.send_json({"error": "bbox inválido"})
+        return
+    
+    await websocket.send_json({"mensaje": "bbox recibido correctamente"})
+    
+    sumo_home = os.environ.get("SUMO_HOME")
+
+    if not sumo_home:
+        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
+
+    print("Ruta de SUMO encontrada correctamente", sumo_home)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        osm_file = os.path.join(tmpdir, "mapa.osm.xml")
+        net_file = os.path.join(tmpdir, "mapa.net.xml")
+
+        try:
+            # 1. Descarga (usando el método de requests que vimos antes)
+            print("Descargando datos de OSM")
+            download_osm_data(bbox, osm_file)
+            print("Datos de OSM descargados correctamente")
+            sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
+            print("Tipos de carreteras seleccionados correctamente")
+            # 2. Generar red de SUMO
+            print("Generando red de SUMO")
+            subprocess.run([
+                os.path.join(sumo_home, "bin", "netconvert"),
+                "--osm-files", osm_file,
+                "--output-file", net_file,
+                "--geometry.remove", "true",
+                "--proj.utm", "true",
+                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
+                "--remove-edges.isolated", "true"
+            ], check=True)  
+            print("Red de SUMO generada correctamente")
+            # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
+            for step_data in simulation_data:
+                for vehicle in step_data["vehicles"]:
+                    feature = {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [vehicle["longitude"], vehicle["latitude"]]
+                },
+                "properties": {
+                    "id": vehicle["id"],
+                    "speed": vehicle["speed"],
+                    "angle": vehicle["angle"],
+                    "time": vehicle["time"]
+                }
+            }
+            await websocket.send_json({feature})  
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        
+    await websocket.send_json({"mensaje": "Conexión exitosa"})
