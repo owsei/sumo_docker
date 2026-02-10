@@ -24,6 +24,7 @@
     <div id="toolbar">
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
         <button onclick="getRoads()" id="getRoadsBtn" disabled>Descargar carreteras</button>
+        <button onclick="getRoadsWebsocket()" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
         <button onclick="runSimulationWebsocket()" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testWebsocket()" id="testWebsocketBtn">Probar Websocket</button>
 
@@ -131,6 +132,17 @@
             return descrip;
         }
 
+        function messageWebsocket(data){
+            if (data.mensaje ) {
+                console.log('Mensaje de prueba:', data);
+                document.getElementById('messages-websocket').style.display = 'block';
+                document.getElementById('messages-websocket').style.color = data.color;
+                document.getElementById('messages-websocket').innerHTML = data.mensaje + "👍";
+                return;
+            }
+            console.log('Mensaje de prueba:', data);
+        }
+
         handler.setInputAction(function (click) {
             const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
 
@@ -138,17 +150,39 @@
 
             if (!firstPoint) {
                 // Primer clic: iniciamos el punto
-                firstPoint = Cesium.Cartographic.fromCartesian(cartesian);
+                firstPointPosition = Cesium.Cartographic.fromCartesian(cartesian);
+                firstPoint = viewer.entities.add({
+                    position: firstPointPosition,
+                    point: {
+                        pixelSize: 10,
+                        color: Cesium.Color.BLUE,
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        outline: true,
+                        outlineColor: Cesium.Color.BLUE,
+                        outlineWidth: 2
+                    }
+                });
                 console.log("Primer punto fijado");
             } else {
                 // Segundo clic: finalizamos y calculamos el bounding box
-                const secondPoint = Cesium.Cartographic.fromCartesian(cartesian);
+                secondPointPosition = Cesium.Cartographic.fromCartesian(cartesian);
+                secondPoint = viewer.entities.add({
+                    position: secondPointPosition,
+                    point: {
+                        pixelSize: 10,
+                        color: Cesium.Color.BLUE,    
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        outline: true,
+                        outlineColor: Cesium.Color.BLUE,
+                        outlineWidth: 2
+                    }
+                });
 
                 bounds = {
-                    west: Math.min(firstPoint.longitude, secondPoint.longitude),
-                    south: Math.min(firstPoint.latitude, secondPoint.latitude),
-                    east: Math.max(firstPoint.longitude, secondPoint.longitude),
-                    north: Math.max(firstPoint.latitude, secondPoint.latitude)
+                    west: Math.min(firstPointPosition.longitude, secondPointPosition.longitude),
+                    south: Math.min(firstPointPosition.latitude, secondPointPosition.latitude),
+                    east: Math.max(firstPointPosition.longitude, secondPointPosition.longitude),
+                    north: Math.max(firstPointPosition.latitude, secondPointPosition.latitude)
                 };
 
                 // Dibujar el rectángulo en el mapa
@@ -164,7 +198,9 @@
                 });
 
                 document.getElementById('getRoadsBtn').disabled = false;
-                document.getElementById('simWebsocketBtn').disabled = false;  
+                document.getElementById('getRoadsWebsocketBtn').disabled = false;
+                document.getElementById('simWebsocketBtn').disabled = false;
+
                 firstPoint = null; // Reiniciar para una nueva selección
             }
         }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -176,19 +212,8 @@
             return Cesium.Cartesian3.fromDegrees(lon, lat, 0);
             });
 
-            const rawType = datosLineString.properties.velocidad_max ? datosLineString.properties.velocidad_max : 'default';
-            const style = roadStyles[datosLineString.properties.velocidad_max] || roadStyles['default'];
-            
             const velocityStyle = getVelocityStyle(datosLineString.properties.velocidad_max);
             
-            const description = `
-                <table class="cesium-infoBox-defaultTable">
-                    <tr><th>Tipo</th><td>${rawType}</td></tr>
-                    <tr><th>Velocidad Máx</th><td>${datosLineString.properties.velocidad_max} km/h</td></tr>
-                    <tr><th>ID Edge</th><td>${datosLineString.properties.id}</td></tr>
-                </table>
-            `;
-
             viewer.entities.add({
             description: createPropertiesPanel(datosLineString.properties),
             polyline: {
@@ -199,6 +224,8 @@
             }
             });
         }
+
+        // LLAMADAS A LA APIs
 
         async function getRoads() {
             if (!bounds) return;
@@ -249,7 +276,6 @@
         }
 
         // WEBSOCKET
-
         // Test websocket
         async function testWebsocket() {
             
@@ -268,6 +294,40 @@
                 }
                 console.log('Mensaje de prueba:', data);
             }
+        }
+
+        async function getRoadsWebsocket(){
+            if (!bounds) return;
+            // Eliminar el rectángulo de la selección
+            viewer.entities.remove(rectangleEntity);
+            document.getElementById('messages-websocket').innerHTML = "Conectando al servidor...";
+            const payload = {
+                west: Cesium.Math.toDegrees(bounds.west),
+                south: Cesium.Math.toDegrees(bounds.south),
+                east: Cesium.Math.toDegrees(bounds.east),
+                north: Cesium.Math.toDegrees(bounds.north),
+                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
+                road_types: ["motorway", "motorway_link","motorway_junction", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
+                
+            };
+
+            const socket = new WebSocket('ws://localhost:8000/ws/getRoads?bbox='+JSON.stringify(payload));
+            socket.onopen = () => {
+                console.log('Conectado al servidor');
+            };
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.mensaje)    {
+                    messageWebsocket(data);
+                    return;
+                }
+                
+                crearLineString(data);
+
+            }
+
+
+
         }
 
         // Run simulation websocket
@@ -377,7 +437,7 @@
                 }
             }
         }
-        
+
         
     </script>
 </body>

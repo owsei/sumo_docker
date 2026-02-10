@@ -245,6 +245,8 @@ async def get_roads(bbox: BoundingBox):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+#**************************WEBSOCKET******************************#
+
 @app.websocket("/ws/simulation")
 async def websocket_simulation(websocket: WebSocket):
     bbox_str = websocket.query_params.get("bbox")
@@ -396,6 +398,7 @@ async def websocket_simulation(websocket: WebSocket):
             traci.close()
             print("Simulación finalizada correctamente")
             await websocket.send_json({"mensaje":"Simulación finalizada correctamente"})
+            await websocket.close()
             
         except Exception as e:
             print(f"Error en la simulación:")
@@ -403,9 +406,7 @@ async def websocket_simulation(websocket: WebSocket):
                 traci.close()
             raise HTTPException(status_code=500, detail=str(e))
 
-
-#***************WEBSOCKET************************************#
-
+# WEBSOCKET PARA PROBAR LA CONEXIÓN
 @app.websocket("/ws/test")
 async def test_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -463,26 +464,38 @@ async def get_roads_websocket(websocket: WebSocket):
             ], check=True)  
             print("Red de SUMO generada correctamente")
             # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
-            for step_data in simulation_data:
-                for vehicle in step_data["vehicles"]:
-                    feature = {
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [vehicle["longitude"], vehicle["latitude"]]
-                        },
-                        "properties": {
-                            "id": vehicle["id"],
-                            "speed": vehicle["speed"],
-                            "angle": vehicle["angle"],
-                            "time": vehicle["time"]
-                        }
-                    }   
-                    await websocket.send_json({feature})
-            await websocket.send_json({"mensaje": "Simulación finalizada correctamente"})
+            net = sumolib.net.readNet(net_file)
+            features = []
+
+            for edge in net.getEdges():
+                # Obtenemos la geometría (forma) de la carretera
+                # Convertimos las coordenadas internas de SUMO a Lon/Lat
+                shape = edge.getShape()
+                coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+
+                # Extraemos las propiedades que queremos
+                # Nota: edge.getName() devuelve el nombre de la calle de OSM
+                properties = {
+                    "id": edge.getID(),
+                    "nombre": edge.getName() or "Calle sin nombre",
+                    "tipo": edge.getType(),
+                    "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
+                    "carriles": edge.getLaneNumber()
+                }
+
+                feature = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": coords
+                    },
+                    "properties": properties
+                }
+                await websocket.send_json(feature)
+            await websocket.send_json({"mensaje": "Descarga de carreteras finalizada correctamente👍"})
+            await websocket.close()
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
         
-    await websocket.send_json({"mensaje": "Conexión exitosa"})
