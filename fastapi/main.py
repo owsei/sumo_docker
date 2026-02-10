@@ -33,6 +33,11 @@ class BoundingBox(BaseModel):
     north: float
     road_types: Optional[List[str]] = ["motorway", "primary", "secondary", "tertiary", "residential"]
 
+class  MensajeSocket(BaseModel):
+    mensaje: str
+    color: str
+    tipo: str
+
 def download_osm_data(bbox: BoundingBox, output_path: str):
     """Descarga directa de Overpass API para evitar errores de osmGet.py"""
     print("Descargando datos de OSM")
@@ -398,6 +403,21 @@ async def websocket_simulation(websocket: WebSocket):
                 traci.close()
             raise HTTPException(status_code=500, detail=str(e))
 
+
+#***************WEBSOCKET************************************#
+
+@app.websocket("/ws/test")
+async def test_websocket(websocket: WebSocket):
+    await websocket.accept()
+    mensaje = MensajeSocket(
+        mensaje="Conexión exitosa",
+        color="#00FF00",
+        tipo="success"
+    )
+    await websocket.send_json(mensaje.dict())
+    await websocket.close()
+
+# WEBSOCKET PARA OBTENER LAS CARRETERAS
 @app.websocket("/ws/getRoads")
 async def get_roads_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -450,15 +470,16 @@ async def get_roads_websocket(websocket: WebSocket):
                         "geometry": {
                             "type": "Point",
                             "coordinates": [vehicle["longitude"], vehicle["latitude"]]
-                },
-                "properties": {
-                    "id": vehicle["id"],
-                    "speed": vehicle["speed"],
-                    "angle": vehicle["angle"],
-                    "time": vehicle["time"]
-                }
-            }
-            await websocket.send_json({feature})  
+                        },
+                        "properties": {
+                            "id": vehicle["id"],
+                            "speed": vehicle["speed"],
+                            "angle": vehicle["angle"],
+                            "time": vehicle["time"]
+                        }
+                    }   
+                    await websocket.send_json({feature})
+            await websocket.send_json({"mensaje": "Simulación finalizada correctamente"})
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

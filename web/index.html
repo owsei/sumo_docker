@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cesium Bounding Box to FastAPI</title>
 
     <!--CESIUM-->
@@ -26,7 +27,7 @@
         <button onclick="runSimulationWebsocket()" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testWebsocket()" id="testWebsocketBtn">Probar Websocket</button>
 
-        <div id="loading" style="display:block; color:yellow;"></div>
+        <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
     </div>
     <div id="cesiumContainer"></div>
 
@@ -77,14 +78,6 @@
             '20': { color: Cesium.Color.WHITE, width: 4 },
             'default': { color: Cesium.Color.GRAY, width: 4 }
         };
-
-        function sleep(milliseconds) {
-            const date = Date.now();
-            let currentDate = null;
-            do {
-                currentDate = Date.now();
-            } while (currentDate - date < milliseconds);
-        }
 
         function mostrarSpinner(){
             document.getElementById('spinnerOverlay').style.display = 'block';
@@ -139,42 +132,42 @@
         }
 
         handler.setInputAction(function (click) {
-        const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+            const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
 
-        if (!cartesian) return;
+            if (!cartesian) return;
 
-        if (!firstPoint) {
-            // Primer clic: iniciamos el punto
-            firstPoint = Cesium.Cartographic.fromCartesian(cartesian);
-            console.log("Primer punto fijado");
-        } else {
-            // Segundo clic: finalizamos y calculamos el bounding box
-            const secondPoint = Cesium.Cartographic.fromCartesian(cartesian);
+            if (!firstPoint) {
+                // Primer clic: iniciamos el punto
+                firstPoint = Cesium.Cartographic.fromCartesian(cartesian);
+                console.log("Primer punto fijado");
+            } else {
+                // Segundo clic: finalizamos y calculamos el bounding box
+                const secondPoint = Cesium.Cartographic.fromCartesian(cartesian);
 
-            bounds = {
-                west: Math.min(firstPoint.longitude, secondPoint.longitude),
-                south: Math.min(firstPoint.latitude, secondPoint.latitude),
-                east: Math.max(firstPoint.longitude, secondPoint.longitude),
-                north: Math.max(firstPoint.latitude, secondPoint.latitude)
-            };
+                bounds = {
+                    west: Math.min(firstPoint.longitude, secondPoint.longitude),
+                    south: Math.min(firstPoint.latitude, secondPoint.latitude),
+                    east: Math.max(firstPoint.longitude, secondPoint.longitude),
+                    north: Math.max(firstPoint.latitude, secondPoint.latitude)
+                };
 
-            // Dibujar el rectángulo en el mapa
-            if (rectangleEntity) viewer.entities.remove(rectangleEntity);
+                // Dibujar el rectángulo en el mapa
+                if (rectangleEntity) viewer.entities.remove(rectangleEntity);
 
-            rectangleEntity = viewer.entities.add({
-                rectangle: {
-                    coordinates: Cesium.Rectangle.fromRadians(bounds.west, bounds.south, bounds.east, bounds.north),
-                    material: Cesium.Color.CYAN.withAlpha(0.4),
-                    outline: true,
-                    outlineColor: Cesium.Color.CYAN
-                }
-            });
+                rectangleEntity = viewer.entities.add({
+                    rectangle: {
+                        coordinates: Cesium.Rectangle.fromRadians(bounds.west, bounds.south, bounds.east, bounds.north),
+                        material: Cesium.Color.CYAN.withAlpha(0.4),
+                        outline: true,
+                        outlineColor: Cesium.Color.CYAN
+                    }
+                });
 
-            document.getElementById('getRoadsBtn').disabled = false;
-            document.getElementById('simWebsocketBtn').disabled = false;  
-            firstPoint = null; // Reiniciar para una nueva selección
-        }
-    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+                document.getElementById('getRoadsBtn').disabled = false;
+                document.getElementById('simWebsocketBtn').disabled = false;  
+                firstPoint = null; // Reiniciar para una nueva selección
+            }
+        }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
         function crearLineString(datosLineString,altura=0) {
             const coordenadas = datosLineString.geometry.coordinates; 
@@ -255,247 +248,34 @@
             }
         }
 
-        async function startSimulation() {
-            if (!bounds) return;
+        // WEBSOCKET
+
+        // Test websocket
+        async function testWebsocket() {
             
-            // Ocultar carreteras y mostrar botón de carga
-            document.getElementById('loading').style.display = 'block';
-
-            mostrarSpinner();
-
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north)
+            const socket = new WebSocket('ws://localhost:8000/ws/test');
+            socket.onopen = () => {
+                console.log('Conectado al servidor');
             };
-
-            try {
-                // 1. Pedir el mapa a Overpass
-                const mapResponse = await fetch('http://localhost:8000/get-roads', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const geojsonData = await mapResponse.json();
-
-                // Dibujar mapa base
-                const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData);
-                viewer.dataSources.add(dataSource);
-                // ... (código de estilos de carreteras) ...
-
-                // 2. Pedir la simulación a SUMO
-                const simResponse = await fetch('http://localhost:8000/simulate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const simulationData = await simResponse.json();
-
-                // 3. Dibujar vehículos
-                const vehicleDataSource = new Cesium.CustomDataSource('Vehicles');
-                viewer.dataSources.add(vehicleDataSource);
-
-                // Crear una entidad base para los coches (luego clonaremos)
-                const carEntity = vehicleDataSource.entities.add({
-                    position: Cesium.Cartesian3.fromDegrees(0, 0),
-                    model: {
-                        uri: 'models/car.glb', // Asegúrate de tener este modelo en tu carpeta web
-                        minimumPixelSize: 16,
-                        maximumScale: 20
-                    },
-                    orientation: new Cesium.CallbackProperty(() => {
-                        return Cesium.Matrix4.IDENTITY;
-                    }, false)
-                });
-
-                // Array para guardar las entidades clonadas
-                const carInstances = [];
-
-                // Crear instancias para cada coche
-                simulationData.vehicles[0].forEach(v => {
-                    const instance = new Cesium.ModelInstance({
-                        model: carEntity._model, // Usar el mismo modelo
-                        id: v.id,
-                        position: Cesium.Cartesian3.fromDegrees(v.lon, v.lat),
-                        orientation: Cesium.Transforms.headingPitchRollQuaternion(
-                            Cesium.HeadingPitchRoll.fromDegrees(0, 0, v.angle),
-                            Cesium.HeadingPitchRollStructure.HEADING_PITCH_ROLL
-                        )
-                    });
-                    carInstances.push(instance);
-                });
-
-                // Crear un ModelGraphics para renderizar todas las instancias
-                vehicleDataSource.entities.add({
-                    model: {
-                        instances: carInstances,
-                        minimumPixelSize: 16,
-                        maximumScale: 20
-                    }
-                });
-
-                // Ocultar la entidad base
-                vehicleDataSource.entities.remove(carEntity);
-
-                // 4. Animación
-                let currentStep = 0;
-                viewer.clock.shouldAnimate = true;
-                viewer.clock.multiplier = 1; // Velocidad de la animación
-
-                viewer.clock.onTick.addEventListener((clock) => {
-                    if (currentStep < simulationData.vehicles.length) {
-                        const vehicles = simulationData.vehicles[currentStep];
-                        
-                        vehicles.forEach((v, index) => {
-                            const instance = carInstances[index];
-                            if (instance) {
-                                instance.position = Cesium.Cartesian3.fromDegrees(v.lon, v.lat);
-                                instance.orientation = Cesium.Transforms.headingPitchRollQuaternion(
-                                    Cesium.HeadingPitchRoll.fromDegrees(0, 0, v.angle),
-                                    Cesium.HeadingPitchRollStructure.HEADING_PITCH_ROLL
-                                );
-                            }
-                        });
-                        
-                        currentStep++;
-                    } else {
-                        viewer.clock.shouldAnimate = false;
-                    }
-                });
-
-                viewer.zoomTo(dataSource);
-
-                ocultarSpinner();
-
-            } catch (error) {
-                ocultarSpinner();
-                alert("Error:", error);
-                console.error("Error:", error);
-            } finally {
-                ocultarSpinner();
-                document.getElementById('loading').style.display = 'none';
-            }
-        }
-    
-        async function runSimulationWindows() {
-            if (!bounds) return;
-            viewer.entities.remove(rectangleEntity);
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north),
-                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
-            };
-
-            try {
-                mostrarSpinner()
-                const response = await fetch('http://localhost:8000/simulate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-
-                const startTime = Cesium.JulianDate.now();
-                
-                // Diccionario para guardar las entidades de los coches
-                let vehicleEntities = {};
-
-                data.forEach(frame => {
-                    const time = Cesium.JulianDate.addSeconds(startTime, frame.step, new Cesium.JulianDate());
-                    
-                    frame.vehicles.forEach(veh => {
-                        if (!vehicleEntities[veh.id]) {
-                            // Si el coche no existe, lo creamos
-                            vehicleEntities[veh.id] = viewer.entities.add({
-                                id: veh.id,
-                                position: new Cesium.SampledPositionProperty(),
-                                point: { pixelSize: 10, color: Cesium.Color.YELLOW },
-                                label: { text: veh.id, font: '10pt sans-serif', pixelOffset: new Cesium.Cartesian2(0, -15) }
-                            });
-                        }
-                        
-                        // Añadimos la posición en este paso de tiempo
-                        const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
-                        vehicleEntities[veh.id].position.addSample(time, position);
-                    });
-                });
-            }
-            catch (error) {
-                console.error("Error:", error);
-            }
-            finally {
-                ocultarSpinner();
-                document.getElementById('loading').style.display = 'none';
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.mensaje ) {
+                    console.log('Mensaje de prueba:', data);
+                    document.getElementById('messages-websocket').style.display = 'block';
+                    document.getElementById('messages-websocket').style.color = data.color;
+                    document.getElementById('messages-websocket').innerHTML = data.mensaje + "👍";
+                    return;
+                }
+                console.log('Mensaje de prueba:', data);
             }
         }
 
-        async function runSimulationLinux() {
-            if (!bounds) return;
-            viewer.entities.remove(rectangleEntity);
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north),
-                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street"]    
-            };
-
-            try {
-                mostrarSpinner()
-                const response = await fetch('http://localhost:8000/simularLinux', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-
-                const startTime = Cesium.JulianDate.now();
-                
-                // Diccionario para guardar las entidades de los coches
-                let vehicleEntities = {};
-
-                data.forEach(frame => {
-                    const time = Cesium.JulianDate.addSeconds(startTime, frame.step, new Cesium.JulianDate());
-                    
-                    frame.vehicles.forEach(veh => {
-                        if (!vehicleEntities[veh.id]) {
-                            // Si el coche no existe, lo creamos
-                            vehicleEntities[veh.id] = viewer.entities.add({
-                                id: veh.id,
-                                position: new Cesium.SampledPositionProperty(),
-                                point: { pixelSize: 10, color: Cesium.Color.YELLOW },
-                                label: { text: veh.id, font: '10pt sans-serif', pixelOffset: new Cesium.Cartesian2(0, -15) }
-                            });
-                        }
-                        
-                        // Añadimos la posición en este paso de tiempo
-                        const position = Cesium.Cartesian3.fromDegrees(veh.lon, veh.lat);
-                        vehicleEntities[veh.id].position.addSample(time, position);
-                    });
-                });
-            }
-            catch (error) {
-                console.error("Error:", error);
-            }
-            finally {
-                ocultarSpinner();
-                document.getElementById('loading').style.display = 'none';
-            }
-        }
-
-    
+        // Run simulation websocket
         async function runSimulationWebsocket() {
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
             viewer.entities.remove(rectangleEntity);
-            document.getElementById('loading').innerHTML = "Conectando al servidor...";
+            document.getElementById('messages-websocket').innerHTML = "Conectando al servidor...";
             const payload = {
                 west: Cesium.Math.toDegrees(bounds.west),
                 south: Cesium.Math.toDegrees(bounds.south),
@@ -516,7 +296,7 @@
             socket.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 if (data.mensaje ) {
-                    document.getElementById('loading').innerHTML = data.mensaje;
+                    document.getElementById('messages-websocket').innerHTML = data.mensaje;
                     return;
                 }
                 ocultarSpinner();
@@ -597,35 +377,8 @@
                 }
             }
         }
-
-        function testWebsocket() {
-            
-            if (!bounds) return;
-            // Eliminar el rectángulo de la selección
-            viewer.entities.remove(rectangleEntity);
-            
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north),
-                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link","motorway_junction", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
-                
-            };
-            const socket = new WebSocket('ws://localhost:8000/ws/getRoads?bbox='+JSON.stringify(payload));
-            socket.onopen = () => {
-                console.log('Conectado al servidor');
-            };
-            socket.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                if (data.mensaje ) {
-                    document.getElementById('loading').innerHTML = data.mensaje;
-                    return;
-                }
-                console.log('Datos de vehículos:', data);
-            }
-        }
+        
+        
     </script>
 </body>
     
