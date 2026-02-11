@@ -435,7 +435,7 @@ async def websocket_simulation(websocket: WebSocket):
                 "--step-length", "0.1",  # 1 segundo por paso
                 "--no-warnings", "true",
                 "--device.rerouting.probability", "1.0", # Todos los coches pueden recalcular
-                "--device.rerouting.period", "0",        # Recalcular en cuanto cambie algo
+                "--device.rerouting.period", "1",        # Recalcular en cuanto cambie algo
                 "--device.rerouting.pre-period", "0",
                 "--ignore-route-errors", "true"          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
             ])
@@ -451,9 +451,6 @@ async def websocket_simulation(websocket: WebSocket):
                     print("Calle prohibida: ", edge_id)
                     await websocket.send_json({"mensaje":"Calle prohibida: "+ edge_id})
             
-            for veh_id in traci.vehicle.getIDList():
-                traci.vehicle.rerouteTraveltime(veh_id)
-                
             # Ejecutar la simulación paso a paso
             step = 0
             max_steps = duration_sec  # Duracion de la simulación
