@@ -16,6 +16,7 @@ import uuid
 sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
 from sumolib import checkBinary
 import traci
+from urllib.parse import unquote
 
 app = FastAPI()
 
@@ -32,6 +33,12 @@ class BoundingBox(BaseModel):
     east: float
     north: float
     road_types: Optional[List[str]] = ["motorway", "primary", "secondary", "tertiary", "residential"]
+
+class SimulationParams(BaseModel):
+    num_vehicles: int = 50
+    duration_sec: int = 300
+    # Lista de IDs de "edges" (vías) prohibidas
+    blocked_edges: List[str] = []
 
 class  MensajeSocket(BaseModel):
     mensaje: str
@@ -278,6 +285,16 @@ async def get_roads(bbox: BoundingBox):
 @app.websocket("/ws/simulation")
 async def websocket_simulation(websocket: WebSocket):
     bbox_str = websocket.query_params.get("bbox")
+    forbiddenRoads = websocket.query_params.get("forbiddenRoads")
+    num_vehicles = int(websocket.query_params.get("num_vehicles"))
+    duration_sec = int(websocket.query_params.get("duration_sec"))
+    period = duration_sec / num_vehicles if num_vehicles > 0 else 100
+    print("Periodo: ", period)
+    await websocket.send_json({"mensaje":"Periodo: "+ str(period)})
+
+    forbiddenRoads = unquote(forbiddenRoads)
+    forbiddenRoadsArray = json.loads(forbiddenRoads)
+
     if not bbox_str:
         raise HTTPException(status_code=400, detail="Missing bbox parameter")
     
@@ -336,13 +353,17 @@ async def websocket_simulation(websocket: WebSocket):
         print("Generando tráfico aleatorio")
         await websocket.send_json({"mensaje":"Generando tráfico aleatorio"})
         
+        # period = duration_sec / num_vehicles if num_vehicles > 0 else 100
+
         random_trips = os.path.join("/usr/share/sumo", "tools", "randomTrips.py")
         procesoTraffic=subprocess.run([
             "python3", random_trips,
             "-n", net_file,
             "-r", route_file,
-            "-e", "3600",  # Simular 3600 segundos de tráfico
-            "--period", "0.1" # Aparece un coche cada 0.5 segundos
+            "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
+            "--period", "0.5", # Aparece un coche cada 0.5 segundos
+            "--fringe-factor", "10"
+            
         ], check=True)  
         print("Tráfico generado correctamente")
         await websocket.send_json({"mensaje":"Tráfico generado correctamente"})
@@ -365,7 +386,7 @@ async def websocket_simulation(websocket: WebSocket):
                     </input>
                     <time>
                         <begin value="0"/>
-                        <end value="3600"/>
+                        <end value="{str(duration_sec)}"/>
                     </time>
                 </configuration>""")
 
@@ -385,6 +406,8 @@ async def websocket_simulation(websocket: WebSocket):
             
             # Lista para almacenar datos de la simulación
             simulation_data = []
+            for edge_id in forbiddenRoadsArray:
+                traci.edge.setAllowed(edge_id, [])  
                 
             # Ejecutar la simulación paso a paso
             step = 0
