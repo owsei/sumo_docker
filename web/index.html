@@ -103,7 +103,7 @@
         let vehicleEntities = {};
         let roadsEntities = {};
 
-        let forbiddenRoads = {};
+        let forbiddenRoadsArray =[];
 
         const roadStyles = {
             'highway.motorway': { color: Cesium.Color.BLUE, width: 4 },
@@ -134,9 +134,12 @@
         }
 
         function setForbiddenRoads(idRoad){
-            alert(idRoad);
-            // forbiddenRoads.add(idRoad);
-
+            forbiddenRoadsArray.push(idRoad);
+            htmlForbbidenRoads=''
+            forbiddenRoadsArray.forEach(element => {
+                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element}</div>`;
+            });
+            document.getElementById('forbiddenRoads').innerHTML = htmlForbbidenRoads;
         }
 
         function removeForbiddenRoads(){
@@ -408,9 +411,10 @@
                 setTimeout(function() {
                     var button = viewer.infoBox.frame.contentDocument.getElementById(entityId);
                     if (button) {
+                        var entity = viewer.selectedEntity;
                         button.addEventListener('click', function() {
-                            alert('¡Botón clickeado! Entidad: ' + entityId);
-                            setForbiddenRoads(entityId);   
+                            setForbiddenRoads(entityId);
+                            entity.polyline.material = Cesium.Color.RED;
                         });
                     }
                 }, 1000);
