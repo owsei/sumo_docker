@@ -305,8 +305,8 @@ async def websocket_simulation(websocket: WebSocket):
         raise HTTPException(status_code=400, detail="Invalid bbox format")
     
    
+    #DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
     operativeSytemIsLinux= 0 if platform.system()=="Linux" else 1
-    # sumo_home = "user/share/sumo"
     if operativeSytemIsLinux==0:
        sumo_home = "/usr/share/sumo"
     else:
@@ -375,17 +375,27 @@ async def websocket_simulation(websocket: WebSocket):
         print("Periodo: ", period)
         await websocket.send_json({"mensaje":"Periodo de aparicion de vehiculos: "+ str(period)})
     
-        random_trips = os.path.join("/usr/share/sumo", "tools", "randomTrips.py")
-
-        procesoTraffic=subprocess.run([
-            "python3", random_trips,
-            "-n", net_file,
-            "-r", route_file,
-            "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
+        random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
+        if operativeSytemIsLinux==0:
+            procesoTraffic=subprocess.run([
+                "python3", random_trips,
+                "-n", net_file,
+                "-r", route_file,
+                "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
             "--period", str(period), # Aparece un coche cada 0.5 segundos
-            "--fringe-factor", "10"
+            "--fringe-factor", "1000"
             
-        ], check=True)  
+            ], check=True)  
+        else:
+            procesoTraffic=subprocess.run([
+                "python", random_trips,
+                "-n", net_file,
+                "-r", route_file,
+                "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
+            "--period", str(period), # Aparece un coche cada 0.5 segundos
+            "--fringe-factor", "1000"
+            
+            ], check=True)  
         print("Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos") 
         await websocket.send_json({"mensaje":"Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos"})
 
@@ -415,64 +425,82 @@ async def websocket_simulation(websocket: WebSocket):
 
         # 4. Iniciar simulación con TraCI
         try:
-            sumo_binary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
+             
+            traciBinary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
             print("Iniciando simulación")
             await websocket.send_json({"mensaje":"Iniciando simulación"})
             traci.start([
-                "/usr/share/sumo/bin/sumo",
+                traciBinary,
                 "-c", config_file,
-                "--step-length", "0.05",  # 1 segundo por paso
-                "--no-warnings", "true"
+                "--step-length", "0.1",  # 1 segundo por paso
+                "--no-warnings", "true",
+                "--device.rerouting.probability", "1.0", # Todos los coches pueden recalcular
+                "--device.rerouting.period", "0",        # Recalcular en cuanto cambie algo
+                "--device.rerouting.pre-period", "0",
+                "--ignore-route-errors", "true"          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
             ])
             
-            # Lista para almacenar datos de la simulación
-            simulation_data = []
-            for edge_id in forbiddenRoadsArray:
-                traci.edge.setAllowed(edge_id, [])  
+            edges=traci.edge.getIDList()
+            print("Total de calles: ", len(edges))
+            await websocket.send_json({"mensaje":"Total de calles: "+ str(len(edges))})
+
+            for edge_id in edges:
+                if (edge_id in forbiddenRoadsArray):
+                    traci.edge.setAllowed(edge_id, [])
+                    traci.edge.setEffort(edge_id, 999999)
+                    print("Calle prohibida: ", edge_id)
+                    await websocket.send_json({"mensaje":"Calle prohibida: "+ edge_id})
+            
+            for veh_id in traci.vehicle.getIDList():
+                traci.vehicle.rerouteTraveltime(veh_id)
                 
             # Ejecutar la simulación paso a paso
             step = 0
-            max_steps = 3600  # 1 hora de simulación
+            max_steps = duration_sec  # Duracion de la simulación
             
             while step < max_steps and traci.simulation.getMinExpectedNumber() > 0:
-                traci.simulationStep()  # Avanzar un paso
-                
-                # Obtener todos los vehículos activos
-                vehicle_ids = traci.vehicle.getIDList()
-                print("Vehículos activos: ", len(vehicle_ids))
-                
-                
-                vehicles_at_step = []
-                for veh in vehicle_ids:
+                try:
+                    traci.simulationStep()  # Avanzar un paso
                     
-                    # Obtener posición (x, y) en la proyección de SUMO
-                    x, y = traci.vehicle.getPosition(veh)
-                    
-                    # Convertir a lon/lat (SUMO usa coordenadas proyectadas)
-                    lon, lat = traci.simulation.convertGeo(x, y)
-                    
-                    # Obtener otros datos útiles
-                    speed = traci.vehicle.getSpeed(veh)
-                    angle = traci.vehicle.getAngle(veh)
-                    
-                    vehiculo={
-                        "id": veh,
-                        "longitude": lon,
-                        "latitude": lat,
-                        "speed": speed,
-                        "angle": angle,
-                        "time": step
-                    }
+                    vehicles_at_step = []
+                    for veh in traci.vehicle.getIDList():
+                        traci.vehicle.rerouteTraveltime(veh)
+                        # Obtener posición (x, y) en la proyección de SUMO
+                        x, y = traci.vehicle.getPosition(veh)
+                        
+                        # Convertir a lon/lat (SUMO usa coordenadas proyectadas)
+                        lon, lat = traci.simulation.convertGeo(x, y)
+                        
+                        # Obtener otros datos útiles
+                        speed = traci.vehicle.getSpeed(veh)
+                        angle = traci.vehicle.getAngle(veh)
+                        
+                        vehiculo={
+                            "id": veh,
+                            "longitude": lon,
+                            "latitude": lat,
+                            "speed": speed,
+                            "angle": angle,
+                            "time": step
+                        }
 
-                    await websocket.send_json(vehiculo)
+                        await websocket.send_json(vehiculo)
+                    
+                    step += 1
+                except traci.TraCIException as e:
+                    if "has no valid route" in str(e):
+                        print("Detectado error de ruta, saltando vehículo conflictivo...")
+                        # El parámetro --ignore-route-errors en el start suele bastar,
+                        # pero aquí podrías manejar lógica extra.
                 
-                step += 1
-            
             # Cerrar TraCI
             traci.close()
             print("Simulación finalizada correctamente")
             await websocket.send_json({"mensaje":"Simulación finalizada correctamente"})
             await websocket.close()
+            
+                
+            
             
         except Exception as e:
             print(f"Error en la simulación:")
