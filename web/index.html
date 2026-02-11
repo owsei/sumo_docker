@@ -28,9 +28,7 @@
         <button onclick="getRoadsPamplona()" class="btn btn-primary" id="getRoadsPamplonaWebsocketBtn">Descargar carreteras Pamplona net</button>
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testWebsocket()" class="btn btn-primary" id="testWebsocketBtn">Probar Websocket</button>
-
         <button onclick="removeForbiddenRoads()" class="btn btn-primary" id="removeForbiddenRoadsBtn" disabled>Quitar prohibición de carreteras</button>
-
         <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
     </div>
     <div id="cesiumContainer"></div>
@@ -39,9 +37,13 @@
         <div class="spinner"></div>
     </div>
 
+    <!-- Botones de vuelo -->
     <div id="layer" class="floating-layer">
+        <button onclick="flyToA10()" class="btn btn-primary" id="flyToA10Btn">Volar a A10</button>
+        <button onclick="flyToPamplona()" class="btn btn-primary" id="flyToPamplonaBtn">Volar a Pamplona</button>
+        <br/>
         <text id="num_vehicles_text">Número de vehículos: </text>
-        <input type="number" id="num_vehicles" value=100>
+        <input type="number" id="num_vehicles" value=1000>
         <text id="duration_sec_text">Duración de la simulación: </text>
         <input type="number" id="duration_sec" value=3600>
 
@@ -95,8 +97,23 @@
         let rectangleEntity = null;
         let bounds = null;
 
+        function flyToA10(){
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(-1.919479,42.913741, 13000),
+                duration: 0
+            });
+        }
+        
+        function flyToPamplona(){
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(-1.652673,42.816455, 13000),
+                duration: 0
+            });
+        }
+
+
         viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(-1.603712,42.813916, 5000),
+            destination: Cesium.Cartesian3.fromDegrees(-1.603712,42.813916, 13000),
             duration: 0
         });
 
@@ -435,10 +452,6 @@
                 
                 crearLineString(data);
                 objeto=document.getElementById("btn_"+data.properties.id);
-                // document.getElementById("btn_"+data.properties.id).addEventListener('click',function ()
-                // {
-                //     alert(data.properties.id);
-                // }); 
             }
         }   
 

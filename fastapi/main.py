@@ -17,6 +17,7 @@ sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
 from sumolib import checkBinary
 import traci
 from urllib.parse import unquote
+import platform
 
 app = FastAPI()
 
@@ -284,13 +285,13 @@ async def get_roads(bbox: BoundingBox):
 
 @app.websocket("/ws/simulation")
 async def websocket_simulation(websocket: WebSocket):
+    await websocket.accept()
     bbox_str = websocket.query_params.get("bbox")
     forbiddenRoads = websocket.query_params.get("forbiddenRoads")
     num_vehicles = int(websocket.query_params.get("num_vehicles"))
+    print("Numero de vehiculos: ", num_vehicles)
     duration_sec = int(websocket.query_params.get("duration_sec"))
-    period = duration_sec / num_vehicles if num_vehicles > 0 else 100
-    print("Periodo: ", period)
-    await websocket.send_json({"mensaje":"Periodo: "+ str(period)})
+    
 
     forbiddenRoads = unquote(forbiddenRoads)
     forbiddenRoadsArray = json.loads(forbiddenRoads)
@@ -303,16 +304,16 @@ async def websocket_simulation(websocket: WebSocket):
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid bbox format")
     
-    await websocket.accept()
-
-    sumo_home = "user/share/sumo"
-    
-    if not sumo_home:
-        # Intenta buscar la ruta por defecto si no está la variable
+   
+    operativeSytemIsLinux= 0 if platform.system()=="Linux" else 1
+    # sumo_home = "user/share/sumo"
+    if operativeSytemIsLinux==0:
+       sumo_home = "/usr/share/sumo"
+    else:
         sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-    
-    print("Ruta de SUMO encontrada correctamente", sumo_home)
-    await websocket.send_json({"mensaje":"Ruta de SUMO encontrada correctamente"+ sumo_home})
+
+    print("Ruta de SUMO encontrada correctamente", sumo_home,"Operative system",platform.system())
+    await websocket.send_json({"mensaje":"Ruta de SUMO encontrada correctamente"+ sumo_home +"|Operative system"+platform.system()})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print("Directorio temporal creado correctamente", tmpdir)
@@ -337,15 +338,31 @@ async def websocket_simulation(websocket: WebSocket):
         print("Generando red de SUMO")
         await websocket.send_json({"mensaje":"Generando red de SUMO"})
 
-        subprocess.run([
-            "netconvert",
-            "--osm-files", osm_file,
-            "--output-file", net_file,
+        
+        
+        if operativeSytemIsLinux==0:
+            subprocess.run([
+                "netconvert",
+                "--osm-files", osm_file,
+                "--output-file", net_file,
+                "--geometry.remove", "true",
+                "--proj.utm", "true",
+                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
+                "--remove-edges.isolated", "true"
+        ], check=True)
+        else:
+            subprocess.run([
+                os.path.join(sumo_home, "bin", "netconvert"),
+                "--osm-files", osm_file,
+                "--output-file", net_file,
             "--geometry.remove", "true",
             "--proj.utm", "true",
             "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
             "--remove-edges.isolated", "true"
         ], check=True)
+
+
+
         print("Red generada correctamente")
         await websocket.send_json({"mensaje":"Red generada correctamente"})
 
@@ -353,20 +370,24 @@ async def websocket_simulation(websocket: WebSocket):
         print("Generando tráfico aleatorio")
         await websocket.send_json({"mensaje":"Generando tráfico aleatorio"})
         
-        # period = duration_sec / num_vehicles if num_vehicles > 0 else 100
 
+        period = duration_sec / num_vehicles if num_vehicles > 0 else 100
+        print("Periodo: ", period)
+        await websocket.send_json({"mensaje":"Periodo de aparicion de vehiculos: "+ str(period)})
+    
         random_trips = os.path.join("/usr/share/sumo", "tools", "randomTrips.py")
+
         procesoTraffic=subprocess.run([
             "python3", random_trips,
             "-n", net_file,
             "-r", route_file,
             "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
-            "--period", "0.5", # Aparece un coche cada 0.5 segundos
+            "--period", str(period), # Aparece un coche cada 0.5 segundos
             "--fringe-factor", "10"
             
         ], check=True)  
-        print("Tráfico generado correctamente")
-        await websocket.send_json({"mensaje":"Tráfico generado correctamente"})
+        print("Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos") 
+        await websocket.send_json({"mensaje":"Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos"})
 
         # Primero crea el archivo de configuración SUMO
         print("Creando archivo de configuración SUMO")
@@ -400,7 +421,7 @@ async def websocket_simulation(websocket: WebSocket):
             traci.start([
                 "/usr/share/sumo/bin/sumo",
                 "-c", config_file,
-                "--step-length", "0.1",  # 1 segundo por paso
+                "--step-length", "0.05",  # 1 segundo por paso
                 "--no-warnings", "true"
             ])
             
@@ -418,6 +439,8 @@ async def websocket_simulation(websocket: WebSocket):
                 
                 # Obtener todos los vehículos activos
                 vehicle_ids = traci.vehicle.getIDList()
+                print("Vehículos activos: ", len(vehicle_ids))
+                
                 
                 vehicles_at_step = []
                 for veh in vehicle_ids:
@@ -453,6 +476,7 @@ async def websocket_simulation(websocket: WebSocket):
             
         except Exception as e:
             print(f"Error en la simulación:")
+            await websocket.send_json({"mensaje":"Error en la simulación: "+str(e)})
             if traci.isLoaded():
                 traci.close()
             raise HTTPException(status_code=500, detail=str(e))
