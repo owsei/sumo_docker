@@ -528,3 +528,52 @@ async def get_roads_websocket(websocket: WebSocket):
             raise HTTPException(status_code=500, detail=str(e))
 
         
+@app.websocket("/ws/getRoadsPamplona")
+async def get_roads_websocket(websocket: WebSocket):
+    await websocket.accept()
+
+    sumo_home = os.environ.get("SUMO_HOME")
+    if not sumo_home:
+        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
+
+    print("Ruta de SUMO encontrada correctamente", sumo_home)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        net_file = os.path.join(tmpdir, "pamplona_v1.net.xml")
+
+        try:
+            # 1. Descarga (usando el método de requests que vimos antes)
+            print("Red de SUMO generada correctamente")
+            # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
+            net = sumolib.net.readNet(net_file)
+            features = []
+
+            for edge in net.getEdges():
+                # Obtenemos la geometría (forma) de la carretera
+                # Convertimos las coordenadas internas de SUMO a Lon/Lat
+                shape = edge.getShape()
+                coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+
+                # Extraemos las propiedades que queremos
+                # Nota: edge.getName() devuelve el nombre de la calle de OSM
+                properties = {
+                    "id": edge.getID(),
+                    "nombre": edge.getName() or "Calle sin nombre",
+                    "tipo": edge.getType(),
+                    "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
+                    "carriles": edge.getLaneNumber()
+                }
+
+                feature = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": coords
+                    },
+                    "properties": properties
+                }
+                await websocket.send_json(feature)
+            await websocket.send_json({"mensaje": "Descarga de carreteras finalizada correctamente👍"})
+            await websocket.close()
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))

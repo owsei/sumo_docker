@@ -25,6 +25,7 @@
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
         <button onclick="getRoads()" class="btn btn-primary" id="getRoadsBtn" disabled>Descargar carreteras</button>
         <button onclick="getRoadsWebsocket()" class="btn btn-primary" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
+        <button onclick="getRoadsPamplona()" class="btn btn-primary" id="getRoadsPamplonaWebsocketBtn">Descargar carreteras Pamplona net</button>
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testWebsocket()" class="btn btn-primary" id="testWebsocketBtn">Probar Websocket</button>
 
@@ -77,7 +78,12 @@
         // Reemplaza con tu token de Cesium Ion
         Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3YWQ3ZWY4ZS03NzBjLTRjNzktYTYyNy0zMTRkYmE1NmE1NDciLCJpZCI6MjgwODk3LCJpYXQiOjE3NDEwNzIzMzl9.rpQ6pVt0APCbZ_zhTJkhquCVXwmMo3unuk4ZafCea-k';
 
-        const viewer = new Cesium.Viewer('cesiumContainer');
+        var viewer = new Cesium.Viewer('cesiumContainer', {
+            infoBox: true,
+        });
+        viewer.infoBox.frame.removeAttribute("sandbox");
+        viewer.infoBox.frame.src = "about:blank";
+        
         let handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
         let firstPoint = null;
@@ -250,6 +256,7 @@
 
                 document.getElementById('getRoadsBtn').disabled = false;
                 document.getElementById('getRoadsWebsocketBtn').disabled = false;
+                document.getElementById('getRoadsPamplonaWebsocketBtn').disabled = false;
                 document.getElementById('simWebsocketBtn').disabled = false;
 
                 firstPoint = null; // Reiniciar para una nueva selección
@@ -356,7 +363,10 @@
         //     }
         // }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
-
+        // Función que se ejecutará al hacer click
+        function miFuncion() {
+            alert('¡Botón clickeado!');
+        }
         
         function crearLineString(datosLineString,altura=0) {
             const coordenadas = datosLineString.geometry.coordinates; 
@@ -368,43 +378,44 @@
             const velocityStyle = getVelocityStyle(datosLineString.properties.velocidad_max);
             
             viewer.entities.add({
-            description: `
-                        <div>
-                            <p>Información de la entidad</p>
-                            <p>ID: ${datosLineString.properties.id}</p>
-                            <button id="btn_${datosLineString.properties.id}" onmouseover="alert(${datosLineString.properties.id})"  class="cesium-button">
-                                Prohibir⛔
-                            </button>
-                        </div>
-                    `,
+            properties: {
+                id: datosLineString.properties.id,
+                velocidad_max: datosLineString.properties.velocidad_max,
+                prohibida: false                    
+            },
             polyline: {
                 positions: posiciones,
                 material : velocityStyle,
                 width: 3,
                 clampToGround: true // Para que la línea se ajuste al terreno
-            }
+            },description: `
+                        <div>
+                            <p>Información de la entidad</p>
+                            <button id="${datosLineString.properties.id}" class="cesium-button">
+                                Prohibir ⛔
+                            </button>
+                        </div>
+                    `,
             });
-            
-
-            // document.getElementById('btn_'+datosLineString.properties.id).addEventListener('click', function(e) {
-            //     // Compruebas si el elemento clicado tiene un ID que empieza por "btn"
-            //     if (e.target && e.target.id.startsWith('btn_')) {
-            //         // Extraes el ID eliminando la palabra 'btn'
-            //         const idPropiedad = e.target.id.replace('btn_', '');
-                    
-            //         alert(idPropiedad);
-            //         setForbiddenRoads(idPropiedad);
-            //     }
-            // });
-
-            // botonProhibir = '<tr><td><button id="btn' + datosLineString.properties.id + '">Prohibir⛔</button></td></tr>';
-            // tabla=document.getElementById('tablaProperties'+datosLineString.properties.id);
-            // tabla.innerHTML += botonProhibir;
-            // document.getElementById('btn' + datosLineString.properties.id).addEventListener('click', function() {
-            //     alert(datosLineString.properties.id);
-            //     setForbiddenRoads(datosLineString.properties.id);
-            // });
         }
+
+        viewer.selectedEntityChanged.addEventListener(function(selectedEntity) {
+            var entityId = selectedEntity.properties.id.getValue();
+            var entityProhibida = selectedEntity.properties.prohibida.getValue();
+            var entityVelocidadMax = selectedEntity.properties.velocidad_max.getValue();
+
+            if (selectedEntity) {
+                setTimeout(function() {
+                    var button = viewer.infoBox.frame.contentDocument.getElementById(entityId);
+                    if (button) {
+                        button.addEventListener('click', function() {
+                            alert('¡Botón clickeado! Entidad: ' + entityId);
+                            setForbiddenRoads(entityId);   
+                        });
+                    }
+                }, 1000);
+            }
+        });
 
         // LLAMADAS A LA APIs
 
@@ -512,6 +523,24 @@
                 // }); 
             }
         }   
+
+        async function getRoadsPamplona(){
+
+            const socket = new WebSocket('ws://localhost:8000/ws/getRoadsPamplona');
+            socket.onopen = () => {
+                console.log('Conectado al servidor');
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.mensaje){
+                    messageWebsocket(data);
+                    return;
+                }
+                
+                crearLineString(data);
+            }
+        }
 
         // Run simulation websocket
         async function runSimulationWebsocket() {
