@@ -23,11 +23,9 @@
 <body>
     <div id="toolbar">
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
-        <!-- <button onclick="getRoads()" class="btn btn-primary" id="getRoadsBtn" disabled>Descargar carreteras</button> -->
         <button onclick="getRoadsWebsocket()" class="btn btn-primary" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
         <button onclick="getRoadsPamplona()" class="btn btn-primary" id="getRoadsPamplonaWebsocketBtn">Descargar carreteras Pamplona net</button>
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
-        <button onclick="testWebsocket()" class="btn btn-primary" id="testWebsocketBtn">Probar Websocket</button>
         <button onclick="removeForbiddenRoads()" class="btn btn-primary" id="removeForbiddenRoadsBtn" disabled>Quitar prohibición de carreteras</button>
         <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
     </div>
@@ -82,6 +80,10 @@
     </div>
 
     <script>
+
+        // const endPoint= "ws://owsei.ddns.net:8000/"
+        const endPoint= "ws://localhost:8000/"
+
         // Reemplaza con tu token de Cesium Ion
         Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3YWQ3ZWY4ZS03NzBjLTRjNzktYTYyNy0zMTRkYmE1NmE1NDciLCJpZCI6MjgwODk3LCJpYXQiOjE3NDEwNzIzMzl9.rpQ6pVt0APCbZ_zhTJkhquCVXwmMo3unuk4ZafCea-k';
 
@@ -93,10 +95,16 @@
         
         let handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
+        // variables para el dibujo del rectangulo
         let firstPoint = null;
         let rectangleEntity = null;
         let bounds = null;
 
+        // variables para la comunicacion con el servidor
+        let socket = null;
+        let simulacionIniciada = false;
+
+        // funciones para el movimiento de la camara
         function flyToA10(){
             viewer.camera.flyTo({
                 destination: Cesium.Cartesian3.fromDegrees(-1.919479,42.913741, 13000),
@@ -104,6 +112,7 @@
             });
         }
         
+        // funcion para volar a pamplona
         function flyToPamplona(){
             viewer.camera.flyTo({
                 destination: Cesium.Cartesian3.fromDegrees(-1.652673,42.816455, 13000),
@@ -117,8 +126,7 @@
             duration: 0
         });
 
-        // const endPoint= "ws://owsei.ddns.net:8000/"
-        const endPoint= "ws://localhost:8000/"
+        
 
         let isDragging = false;
         let startPosition = null;
@@ -129,6 +137,8 @@
         let roadsEntities = {};
 
         let forbiddenRoadsArray =[];
+
+        let simulationState = 0; // 0 = stopped, 1 = running
 
         const roadStyles = {
             'highway.motorway': { color: Cesium.Color.BLUE, width: 4 },
@@ -158,17 +168,48 @@
             document.getElementById('spinnerOverlay').style.display = 'none';
         }
 
-        function setForbiddenRoads(idRoad){
-            forbiddenRoadsArray.push(idRoad);
-            htmlForbbidenRoads=''
-            forbiddenRoadsArray.forEach(element => {
-                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element}</div>`;
-            });
-            document.getElementById('forbiddenRoads').innerHTML = htmlForbbidenRoads;
+        function closeEdgeWebsocket(idEdge) {
+            const comando = {
+                action: "close_edge",
+                edge_id: idEdge
+            };
+            
+            socket.send(JSON.stringify(comando));
+            console.log("Enviando petición de cierre para:", idEdge);
+
         }
 
-        function removeForbiddenRoads(){
-            forbiddenRoads.clear();
+        function setForbiddenRoads(idRoad,nameRoad){
+            forbiddenRoadsArray.push({id:idRoad,nombreCalle:nameRoad});
+            
+            
+            htmlForbbidenRoads=''
+            forbiddenRoadsArray.forEach(element => {
+                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element.id} <button onclick="enableForbiddenRoad('${element.id}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
+            });
+            document.getElementById('forbiddenRoads').innerHTML = htmlForbbidenRoads;
+
+            if (simulacionIniciada){
+                closeEdgeWebsocket(idRoad);
+            }
+
+        }
+
+
+        function removeItemOnce(arr, value) {
+            var index = arr.indexOf(value);
+            if (index > -1) {
+                arr.splice(index, 1);
+            }
+            return arr;
+            }
+
+        function enableForbiddenRoad(idEdge){
+            forbiddenRoadsArray = removeItemOnce(forbiddenRoadsArray, idEdge);
+            document.getElementById('forbiddenRoads').innerHTML = '';
+            forbiddenRoadsArray.forEach(element => {
+                document.getElementById('forbiddenRoads').innerHTML+=`<div class="alert alert-danger" role="alert">${nameRoad} - ${element} <button onclick="enableForbiddenRoad('${element}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
+            });
         }
 
         function getVelocityStyle(velocity) {
@@ -250,6 +291,9 @@
                     }
                 });
                 console.log("Primer punto fijado");
+                document.getElementById('getRoadsWebsocketBtn').disabled = true;
+                document.getElementById('getRoadsPamplonaWebsocketBtn').disabled = true;
+                document.getElementById('simWebsocketBtn').disabled = true;
             } else {
                 // Segundo clic: finalizamos y calculamos el bounding box
                 secondPointPosition = Cesium.Cartographic.fromCartesian(cartesian);
@@ -292,11 +336,7 @@
                 firstPoint = null; // Reiniciar para una nueva selección
             }
         }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
-
         // Función que se ejecutará al hacer click
-        function miFuncion() {
-            alert('¡Botón clickeado!');
-        }
         
         function crearLineString(datosLineString,altura=0) {
             const coordenadas = datosLineString.geometry.coordinates; 
@@ -311,18 +351,20 @@
             properties: {
                 id: datosLineString.properties.id,
                 velocidad_max: datosLineString.properties.velocidad_max,
-                prohibida: false                    
+                prohibida: datosLineString.properties.prohibida,
+                nombre: datosLineString.properties.nombre
             },
             polyline: {
                 positions: posiciones,
                 material : velocityStyle,
-                width: 3,
+                width: 5,
                 clampToGround: true // Para que la línea se ajuste al terreno
             },
             description: `
                         <div id="tablaProperties${datosLineString.properties.id}"  class="tablePorperties" >
                             <p>Información de la entidad</p>
                             <p>ID: ${datosLineString.properties.id}</p>
+                            <p>Calle: ${datosLineString.properties.nombre}</p>
                             <p>Velocidad máxima: ${datosLineString.properties.velocidad_max}</p>
                             <p>Prohibida: ${datosLineString.properties.prohibida}</p>
                             <button id="${datosLineString.properties.id}" class="cesium-button">
@@ -334,9 +376,11 @@
         }
 
         viewer.selectedEntityChanged.addEventListener(function(selectedEntity) {
+            if (!selectedEntity.properties) return;
             var entityId = selectedEntity.properties.id.getValue();
             var entityProhibida = selectedEntity.properties.prohibida.getValue();
             var entityVelocidadMax = selectedEntity.properties.velocidad_max.getValue();
+            var entityStreetName = selectedEntity.properties.nombre.getValue();
 
             if (selectedEntity) {
                 setTimeout(function() {
@@ -344,8 +388,9 @@
                     if (button) {
                         var entity = viewer.selectedEntity;
                         button.addEventListener('click', function() {
-                            setForbiddenRoads(entityId);
-                            entity.polyline.material = Cesium.Color.RED;
+                            setForbiddenRoads(entityId,entityStreetName);
+                            // entity.polyline.material = Cesium.Color.RED;
+                            entity.polyline.material = new Cesium.ColorMaterialProperty(Cesium.Color.RED);
                         });
                     }
                 }, 1000);
@@ -353,76 +398,9 @@
         });
 
         // LLAMADAS A LA APIs
-
-        async function getRoads() {
-            if (!bounds) return;
-            viewer.entities.remove(rectangleEntity);
-            const payload = {
-                west: Cesium.Math.toDegrees(bounds.west),
-                south: Cesium.Math.toDegrees(bounds.south),
-                east: Cesium.Math.toDegrees(bounds.east),
-                north: Cesium.Math.toDegrees(bounds.north),
-                // road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service", "footway", "cycleway", "steps", "path", "track", "bridleway", "corridor", "ferry", "construction", "proposed", "raceway", "platform", "elevator", "escalator", "moving_walkway", "transit", "subway", "tram", "light_rail", "rail", "monorail"]    
-                road_types: ["motorway", "motorway_link", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]    
-            };
-
-            try {
-                mostrarSpinner()
-                const response = await fetch('http://localhost:8000/get-roads', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const dataSource = await response.json();
-
-                if (!Array.isArray(dataSource)){
-                    entidades = dataSource.features;  
-                }
-                else {
-                    entidades = dataSource[0].features;
-                }
-
-                if (!entidades ) {
-                    console.warn("No se encontraron entidades en el GeoJSON."); 
-                    return;
-                }
-
-                for (let i = 0; i < entidades.length; i++) {
-                    crearLineString(entidades[i]);
-                }
-              
-                ocultarSpinner()
-
-            } catch (error) {
-                ocultarSpinner()
-                console.error("Error:", error);
-            } finally {
-                ocultarSpinner();
-            }
-        }
-
         // WEBSOCKET
         // Test websocket
-        async function testWebsocket() {
-            
-            const socket = new WebSocket(endPoint+'ws/test');
-            socket.onopen = () => {
-                console.log('Conectado al servidor');
-            };
-            socket.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                if (data.mensaje ) {
-                    console.log('Mensaje de prueba:', data);
-                    document.getElementById('messages-websocket').style.display = 'block';
-                    document.getElementById('messages-websocket').style.color = data.color;
-                    document.getElementById('messages-websocket').innerHTML = data.mensaje + "👍";
-                    return;
-                }
-                console.log('Mensaje de prueba:', data);
-            }
-        }
-
+        
         async function getRoadsWebsocket(){
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
@@ -441,6 +419,7 @@
             const socket = new WebSocket(endPoint+'ws/getRoads?bbox='+JSON.stringify(payload));
             socket.onopen = () => {
                 console.log('Conectado al servidor');
+                mostrarSpinner()
             };
 
             socket.onmessage = function(event) {
@@ -449,7 +428,7 @@
                     messageWebsocket(data);
                     return;
                 }
-                
+                ocultarSpinner()
                 crearLineString(data);
                 objeto=document.getElementById("btn_"+data.properties.id);
             }
@@ -494,94 +473,110 @@
             const num_vehicles = document.getElementById('num_vehicles').value;
             const duration_sec = document.getElementById('duration_sec').value;
 
-            const socket = new WebSocket(endPoint+'ws/simulation?bbox='+JSON.stringify(payload)+"&forbiddenRoads="+forbiddenRoads+"&num_vehicles="+num_vehicles+"&duration_sec="+duration_sec);
+            socket = new WebSocket(endPoint+'ws/simulation?bbox='+JSON.stringify(payload)+"&forbiddenRoads="+forbiddenRoads+"&num_vehicles="+num_vehicles+"&duration_sec="+duration_sec);
             const vehicles = {}; // Diccionario para rastrear entidades
 
             socket.onopen = () => {
+                mostrarSpinner()
                 console.log('Conectado al servidor');
             };
     
             socket.onmessage = function(event) {
-                const data = JSON.parse(event.data);
+                ocultarSpinner();
+                let data = JSON.parse(event.data);
+                if (data.time==575 && data.id=="9"){
+                    console.log(data);
+                }
                 if (data.mensaje ) {
                     document.getElementById('messages-websocket').innerHTML = data.mensaje;
                     return;
                 }
-                ocultarSpinner();
-                console.log('Datos de vehículos:', data);
-                const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
-                if (!vehicles[data.id]) {
-                    // Crear el vehículo si no existe
-                    const orientation = Cesium.Transforms.headingPitchRollQuaternion(
-                        position,
-                        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
-                    );
 
-                    const random_number = Math.floor(Math.random() * 7) + 1;
-                    let URI_Coche;
-                    if (random_number === 1) {
-                        URI_Coche = "coches/forales.glb";
-                    } else if (random_number === 2) {
-                        URI_Coche = "coches/cocheAzulCubo.glb";
-                    } else if (random_number === 3) {
-                        URI_Coche = "coches/cocheVerdeCubo.glb";
-                    } else if (random_number === 4) {
-                        URI_Coche = "coches/cocheRojoCubo.glb";
-                    } else if (random_number === 5) {
-                        URI_Coche = "coches/cocheAmarilloCubo.glb";
-                    } else if (random_number === 6) {
-                        URI_Coche = "coches/cocheMoradoCubo.glb";
-                    } else if (random_number === 7) {
-                        URI_Coche = "coches/cocheNegroCubo.glb"
+                if (data.calle_cerrada ) {
+                    document.getElementById('messages-websocket').innerHTML = data.calle_cerrada;
+                    return;
+                }
+
+                // 0 = stopped, 1 = running
+                if (data.simulationState)
+                {
+                    console.log('Estado de la simulación:', data.simulationState);
+                    if (data.simulationState == "0") {
+                        simulacionIniciada = false;
+                    } else if (data.simulationState == "1") {
+                        simulacionIniciada = true;
                     }
+                    return;
+                }
+                
 
-                    
-
-                    vehicles[data.id] = viewer.entities.add({
-                        id: data.id,
-                        position: position,
-                        orientation: orientation,
-                        description: createPropertiesPanel(data),
-                        // Orientación basada en el ángulo de SUMO
-                        // orientation: Cesium.Transforms.headingPitchRollQuaternion(
-                        //     position,
-                        //     new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
-                        // ),
-                        // point: { 
-                        //     id: data.id,
-                        //     pixelSize: 15, 
-                        //     color: Cesium.Color.RED ,clampToGround: true,
-                        //     heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el punto está en terreno
-                        //     disableDepthTestDistance: Number.POSITIVE_INFINITY 
-                        // }
-                        
-                        model: {
-                            uri: URI_Coche, // Ruta a tu carpeta
-                            minimumPixelSize: 20,          // Para que no desaparezca al alejarse
-                            // maximumScale: 20000,
-                            scale: 25.0                  // Ajusta según el tamaño de tu .glb
-                        },
-                        label: { 
-                            text: data.id, 
-                            font: '10pt sans-serif',
-                            fillColor: Cesium.Color.WHITE,
-                            outlineColor: Cesium.Color.BLACK,
-                            outlineWidth: 2,
-                            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                            pixelOffset: new Cesium.Cartesian2(0, -20) 
-                        }
-                    });
-                } else {
-                    // Actualizar posición y rotación en tiempo real
-                    // vehicles[data.id].position = position;
+                if (data.vehiculo){
+                    data = data.vehiculo;
+                
+                    console.log('Datos de vehículos:', data);
                     const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
-                    viewer.entities.getById(data.id).position = position;
-                    viewer.entities.getById(data.id).orientation = Cesium.Transforms.headingPitchRollQuaternion(
-                        position,
-                        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
-                    );
+                    if (!vehicles[data.id]) {
+                        // Crear el vehículo si no existe
+                        const orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                            position,
+                            new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                        );
 
-                    
+                        const random_number = Math.floor(Math.random() * 7) + 1;
+                        let URI_Coche;
+                        if (random_number === 1) {
+                            URI_Coche = "coches/forales.glb";
+                        } else if (random_number === 2) {
+                            URI_Coche = "coches/cocheAzulCubo.glb";
+                        } else if (random_number === 3) {
+                            URI_Coche = "coches/cocheVerdeCubo.glb";
+                        } else if (random_number === 4) {
+                            URI_Coche = "coches/cocheRojoCubo.glb";
+                        } else if (random_number === 5) {
+                            URI_Coche = "coches/cocheAmarilloCubo.glb";
+                        } else if (random_number === 6) {
+                            URI_Coche = "coches/cocheMoradoCubo.glb";
+                        } else if (random_number === 7) {
+                            URI_Coche = "coches/cocheNegroCubo.glb"
+                        }
+
+                        
+
+                        vehicles[data.id] = viewer.entities.add({
+                            id: data.id,
+                            position: position,
+                            orientation: orientation,
+                            description: createPropertiesPanel(data),
+                            // Orientación basada en el ángulo de SUMO
+                            // orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                            //     position,
+                            //     new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                            // ),
+                            model: {
+                                uri: URI_Coche, // Ruta a tu carpeta
+                                minimumPixelSize: 20,          // Para que no desaparezca al alejarse
+                                scale: 20.0                  // Ajusta según el tamaño de tu .glb
+                            },
+                            label: { 
+                                text: data.id, 
+                                font: '10pt sans-serif',
+                                fillColor: Cesium.Color.WHITE,
+                                outlineColor: Cesium.Color.BLACK,
+                                outlineWidth: 2,
+                                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                                pixelOffset: new Cesium.Cartesian2(0, -20) 
+                            }
+                        });
+                    } else {
+                        // Actualizar posición y rotación en tiempo real
+                        // vehicles[data.id].position = position;
+                        const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
+                        viewer.entities.getById(data.id).position = position;
+                        viewer.entities.getById(data.id).orientation = Cesium.Transforms.headingPitchRollQuaternion(
+                            position,
+                            new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
+                        );
+                    }
                 }
             }
         }
