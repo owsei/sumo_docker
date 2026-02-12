@@ -81,8 +81,8 @@
 
     <script>
 
-        // const endPoint= "ws://owsei.ddns.net:8000/"
-        const endPoint= "ws://localhost:8000/"
+        const endPoint= "ws://owsei.ddns.net:8000/"
+        // const endPoint= "ws://localhost:8000/"
 
         // Reemplaza con tu token de Cesium Ion
         Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3YWQ3ZWY4ZS03NzBjLTRjNzktYTYyNy0zMTRkYmE1NmE1NDciLCJpZCI6MjgwODk3LCJpYXQiOjE3NDEwNzIzMzl9.rpQ6pVt0APCbZ_zhTJkhquCVXwmMo3unuk4ZafCea-k';
@@ -467,7 +467,7 @@
                 road_types: ["motorway", "motorway_link","motorway_junction", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service"]
             };
 
-            const encoded = forbiddenRoadsArray.map(road => road.replace(/#/g, '%23'));
+            const encoded = forbiddenRoadsArray.map(road => road.id.replace(/#/g, '%23'));
             const forbiddenRoads = JSON.stringify(encoded);
 
             const num_vehicles = document.getElementById('num_vehicles').value;
@@ -477,12 +477,10 @@
             const vehicles = {}; // Diccionario para rastrear entidades
 
             socket.onopen = () => {
-                mostrarSpinner()
                 console.log('Conectado al servidor');
             };
     
             socket.onmessage = function(event) {
-                ocultarSpinner();
                 let data = JSON.parse(event.data);
                 if (data.time==575 && data.id=="9"){
                     console.log(data);
@@ -509,6 +507,11 @@
                     return;
                 }
                 
+                if (data.semaforos){
+                    document.getElementById('messages-websocket').innerHTML = data.semaforos;
+                    return;
+                }
+
 
                 if (data.vehiculo){
                     data = data.vehiculo;

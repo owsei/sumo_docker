@@ -343,17 +343,24 @@ async def websocket_simulation(websocket: WebSocket):
                 "--ignore-route-errors", "true"          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
             ])
             
+            # CALLES
             edges=traci.edge.getIDList()
             print("Total de calles: ", len(edges))
             await websocket.send_json({"mensaje":"Total de calles: "+ str(len(edges))})
 
+            # PROHIBIR CALLES
             for edge_id in edges:
                 if (edge_id in forbiddenRoadsArray):
                     traci.edge.setAllowed(edge_id, [])
                     traci.edge.setEffort(edge_id, 999999)
                     print("Calle prohibida: ", edge_id)
                     await websocket.send_json({"mensaje":"Calle prohibida: "+ edge_id})
-            
+
+            #SEMAFOROS
+            trafficLights=traci.trafficlight.getIDList()
+            print("Total de semáforos: ", len(trafficLights))
+            await websocket.send_json({"semaforos": len(trafficLights)})
+
             # Ejecutar la simulación paso a paso
             step = 0
             await websocket.send_json({"simulationState":"1"})
