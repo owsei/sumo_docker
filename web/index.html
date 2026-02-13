@@ -27,7 +27,8 @@
         <button onclick="getRoadsPamplona()" class="btn btn-primary" id="getRoadsPamplonaWebsocketBtn">Descargar carreteras Pamplona net</button>
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="removeForbiddenRoads()" class="btn btn-primary" id="removeForbiddenRoadsBtn" disabled>Quitar prohibición de carreteras</button>
-        <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
+        <button onclick="testConnectionProxy()" class="btn btn-primary" id="testConnectionProxyBtn">Test Connection Proxy</button>
+        
     </div>
     <div id="cesiumContainer"></div>
 
@@ -36,7 +37,7 @@
     </div>
 
     <!-- Botones de vuelo -->
-    <div id="layer" class="floating-layer">
+    <div id="floatingLayer" class="floating-layer">
         <button onclick="flyToA10()" class="btn btn-primary" id="flyToA10Btn">Volar a A10</button>
         <button onclick="flyToPamplona()" class="btn btn-primary" id="flyToPamplonaBtn">Volar a Pamplona</button>
         <br/>
@@ -57,23 +58,52 @@
                 </div>
             </div>
             <div class="accordion-item">
-                <h2 class="accordion-header" id="flush-headingTwo">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo" aria-expanded="false" aria-controls="flush-collapseTwo">
-                    Calles permitidas
-                </button>
-                </h2>
-                <div id="flush-collapseTwo" class="accordion-collapse collapse" aria-labelledby="flush-headingTwo" data-bs-parent="#accordionFlushExample">
-                <div class="accordion-body"><div id="allowedRoads"></div></div>
-                </div>
-            </div>
-            <div class="accordion-item">
                 <h2 class="accordion-header" id="flush-headingThree">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseThree" aria-expanded="false" aria-controls="flush-collapseThree">
-                    Simulación
+                    Simulación stats
                 </button>
                 </h2>
                 <div id="flush-collapseThree" class="accordion-collapse collapse" aria-labelledby="flush-headingThree" data-bs-parent="#accordionFlushExample">
-                <div class="accordion-body">Placeholder content for this accordion, which is intended to demonstrate the <code>.accordion-flush</code> class. This is the third item's accordion body. Nothing more exciting happening here in terms of content, but just filling up the space to make it look, at least at first glance, a bit more representative of how this would look in a real-world application.</div>
+                <div class="accordion-body"><div id="simulationStats"></div></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-headingTwo">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo" aria-expanded="false" aria-controls="flush-collapseTwo">
+                    Emisiones por calle
+                </button>
+                </h2>
+                <div id="flush-collapseTwo" class="accordion-collapse collapse" aria-labelledby="flush-headingTwo" data-bs-parent="#accordionFlushExample">
+                <div class="accordion-body"><div id="emisionesPorCalle"></div></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-headingFour">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseFour" aria-expanded="false" aria-controls="flush-collapseFour">
+                    Reporte final
+                </button>
+                </h2>
+                <div id="flush-collapseFour" class="accordion-collapse collapse" aria-labelledby="flush-headingFour" data-bs-parent="#accordionFlushExample">
+                <div class="accordion-body"><div id="final_report"></div></div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <div id="floating-layer-right">
+        <div class="accordion accordion-flush" id="accordionFlushMessages">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-messages">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseMessages" aria-expanded="false" aria-controls="flush-collapseOne">
+                    Mensajes
+                </button>
+                </h2>
+                <div id="flush-collapseMessages" class="accordion-collapse collapse" aria-labelledby="flush-messages" data-bs-parent="#accordionFlushMessages">
+                <div class="accordion-body">
+                    <div class="messages-websocket">
+                        <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -81,8 +111,9 @@
 
     <script>
 
-        const endPoint= "ws://owsei.ddns.net:8000/"
-        // const endPoint= "ws://localhost:8000/"
+        // const endPoint= "ws://owsei.ddns.net:8001/"
+        const endPoint= "http://localhost:8001/"
+        // const endPointDirecto="ws://localhost:8000/"
 
         // Reemplaza con tu token de Cesium Ion
         Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3YWQ3ZWY4ZS03NzBjLTRjNzktYTYyNy0zMTRkYmE1NmE1NDciLCJpZCI6MjgwODk3LCJpYXQiOjE3NDEwNzIzMzl9.rpQ6pVt0APCbZ_zhTJkhquCVXwmMo3unuk4ZafCea-k';
@@ -195,7 +226,6 @@
 
         }
 
-
         function removeItemOnce(arr, value) {
             var index = arr.indexOf(value);
             if (index > -1) {
@@ -265,7 +295,7 @@
                 console.log('Mensaje de prueba:', data);
                 document.getElementById('messages-websocket').style.display = 'block';
                 document.getElementById('messages-websocket').style.color = data.color;
-                document.getElementById('messages-websocket').innerHTML = data.mensaje + "👍";
+                document.getElementById('messages-websocket').innerHTML += data.mensaje + "<br/>";
                 return;
             }
             console.log('Mensaje de prueba:', data);
@@ -351,12 +381,19 @@
             properties: {
                 id: datosLineString.properties.id,
                 velocidad_max: datosLineString.properties.velocidad_max,
+                nombre: datosLineString.properties.nombre,
+                carriles: datosLineString.properties.carriles,
                 prohibida: datosLineString.properties.prohibida,
-                nombre: datosLineString.properties.nombre
+                tamaño: datosLineString.properties.tamaño,
+                origen: datosLineString.properties.origen,
+                destino: datosLineString.properties.destino,
+                prioridad: datosLineString.properties.prioridad,
+                color: datosLineString.properties.color
+
             },
             polyline: {
                 positions: posiciones,
-                material : velocityStyle,
+                material : Cesium.Color.fromCssColorString(datosLineString.properties.color),
                 width: 5,
                 clampToGround: true // Para que la línea se ajuste al terreno
             },
@@ -405,7 +442,7 @@
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
             viewer.entities.remove(rectangleEntity);
-            document.getElementById('messages-websocket').innerHTML = "Conectando al servidor...";
+            document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...<br/>";
             const payload = {
                 west: Cesium.Math.toDegrees(bounds.west),
                 south: Cesium.Math.toDegrees(bounds.south),
@@ -416,9 +453,10 @@
                 
             };
 
-            const socket = new WebSocket(endPoint+'ws/getRoads?bbox='+JSON.stringify(payload));
+            socket = new WebSocket(endPoint+'ws/getRoads?bbox='+JSON.stringify(payload));
             socket.onopen = () => {
                 console.log('Conectado al servidor');
+                document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...";
                 mostrarSpinner()
             };
 
@@ -457,7 +495,7 @@
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
             viewer.entities.remove(rectangleEntity);
-            document.getElementById('messages-websocket').innerHTML = "Conectando al servidor...";
+        document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...<br/>";
             const payload = {
                 west: Cesium.Math.toDegrees(bounds.west),
                 south: Cesium.Math.toDegrees(bounds.south),
@@ -486,12 +524,12 @@
                     console.log(data);
                 }
                 if (data.mensaje ) {
-                    document.getElementById('messages-websocket').innerHTML = data.mensaje;
+                    document.getElementById('messages-websocket').innerHTML += data.mensaje + "<br/>";
                     return;
                 }
 
                 if (data.calle_cerrada ) {
-                    document.getElementById('messages-websocket').innerHTML = data.calle_cerrada;
+                    document.getElementById('messages-websocket').innerHTML += data.calle_cerrada + "<br/>";
                     return;
                 }
 
@@ -508,7 +546,7 @@
                 }
                 
                 if (data.semaforos){
-                    document.getElementById('messages-websocket').innerHTML = data.semaforos;
+                    document.getElementById('messages-websocket').innerHTML += data.semaforos + "<br/>";
                     return;
                 }
 
@@ -581,9 +619,56 @@
                         );
                     }
                 }
+
+
+                if (data.stats){
+                    document.getElementById('simulationStats').innerHTML = "Vehículos totales: " + data.stats.vehiculos_totales + "<br>" + "Tiempo medio de espera: " + data.stats.tiempo_medio_espera + "<br>" + "Emisiones de CO2 actuales: " + data.stats.emisiones_co2_actuales;
+                    return;
+                }
+
+                if (data.final_report){
+                    document.getElementById('final_report').innerHTML = "Total CO2: " + data.final_report.total_co2_kg + "<br>" + "Equivalente en árboles: " + data.final_report.equivalent_trees_day;
+                    return;
+                }   
+
+                if (data.emisiones_xml){
+                    // Aquí procesaremos el XML
+                    console.log("XML de emisiones recibido");
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data.emisiones_xml, "text/xml");
+                    const edges = xmlDoc.getElementsByTagName("edge");
+                    let html = "";
+                    for (let i = 0; i < edges.length; i++) {
+                        const edge = edges[i];
+                        const id = edge.getAttribute("id");
+                        constCO2 = edge.getAttribute("CO2");
+                        html += "<p>" + id + ": " + CO2 + "</p>";
+                    }
+                    document.getElementById("emisionesPorCalle").innerHTML = html;
+                    return;
+                }
             }
         }
 
+
+        function testConnectionProxy(){
+            // Antes: const socket = new WebSocket('ws://localhost:8001/ws/status');
+            // Ahora (vía Nginx):
+            socket = new WebSocket(endPoint + 'ws/status');
+            // socket = new WebSocket('ws://localhost:8001/ws/status');
+            document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...<br/>";
+            
+
+            socket.onopen = function(e) {
+                console.log("[open] Conexión establecida a través de Nginx");
+                document.getElementById('messages-websocket').innerHTML += "Conexión establecida a través de Nginx<br/>";
+            };
+
+            socket.onmessage = function(event) {
+                console.log(`[message] Datos recibidos: ${event.data}`);
+                document.getElementById('messages-websocket').innerHTML += "Datos recibidos: " + event.data + "<br/>";
+            };
+        }
         
     </script>
 </body>

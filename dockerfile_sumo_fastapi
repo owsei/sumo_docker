@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./red_carreteras/pamplona_v1.net.xml /tmp/pamplona_v1.net.xml
+COPY ./ficheros_adicionales/tipos_vehiculos.add.xml /tmp/tipos_vehiculos.add.xml
 
 RUN echo "Instalando Fastapi"
 RUN pip install "fastapi[standard]"

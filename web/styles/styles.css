@@ -229,3 +229,46 @@
     background-color: #007BFF;
     color: white;
 }
+
+#floatingLayer {
+    position: absolute;
+    top: 150px;
+    right: 10px;
+    width: 300px;
+    max-height: 90vh; /* Ocupa casi toda la pantalla verticalmente */
+    background-color: rgba(255, 255, 255, 0.95); /* Fondo blanco semitransparente */
+    color: #333;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    overflow-y: auto; /* Scroll si el contenido excede la altura */
+    box-sizing: border-box;
+}
+
+.messages-websocket {
+    padding: 2px;
+    overflow-y: auto; /* Scroll si el contenido excede la altura */
+    background-color: rgba(255, 255, 255, 0.95); /* Fondo blanco semitransparente */
+    color: #333;
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    box-sizing: border-box;
+}
+
+#floating-layer-right {
+    position: absolute;
+    top: 150px;
+    right: 10px;
+    width: 450px;
+    max-height: 90vh; /* Ocupa casi toda la pantalla verticalmente */
+    background-color: rgba(255, 255, 255, 0.95); /* Fondo blanco semitransparente */
+    color: #333;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    overflow-y: auto; /* Scroll si el contenido excede la altura */
+    box-sizing: border-box;
+}

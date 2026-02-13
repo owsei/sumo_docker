@@ -112,6 +112,24 @@ def convert_net_to_geojson_net(net_file):
         "features": features
     }
 
+def getVelocityStyle(velocity):
+
+            if (velocity>119):
+                return "blue"
+            elif (velocity>101 and velocity<=119):
+                return "green"
+            elif (velocity>80 and velocity<=101):
+                return "yellow"
+            elif (velocity>60 and velocity<=80):
+                return "purple"
+            elif (velocity>40 and velocity<=60):
+                return "orange"
+            elif (velocity>20 and velocity<=40):
+                return "white"
+            else:
+                return "gray"
+
+
 async def sendCreateRoads(net_file):
     net = sumolib.net.readNet(net_file)
     for edge in net.getEdges():
@@ -145,6 +163,25 @@ async def sendCreateRoads(net_file):
 @app.get("/")
 async def root():
     return {"status": "ok"}
+
+@app.get("/status")
+async def status():
+    return {"status": "ok"}
+
+
+@app.websocket("/ws/status")
+async def websocket_status(websocket: WebSocket):
+    try:
+        await websocket.accept()
+        await websocket.send_json(estado_simulador)
+
+    except Exception as e:
+        print(f"Error en WebSocket: {e}")
+    finally:
+        await websocket.close()
+
+
+
 
 @app.post("/get-roads")
 async def get_roads(bbox: BoundingBox):
@@ -227,6 +264,18 @@ async def websocket_simulation(websocket: WebSocket):
         print("Archivo NET creado correctamente", net_file)
         route_file = os.path.join(tmpdir, "mapa.rou.xml")
         print("Archivo ROUT creado correctamente", route_file)
+
+        # tipos_vehiculos = os.path.join(tmpdir, "tipos_vehiculos.add.xml")
+        # print("Archivo tipos_vehiculos creado correctamente", tipos_vehiculos)
+
+        detalles_viajes = os.path.join(tmpdir, "detalles_viajes.xml")
+        print("Archivo detalles_viajes creado correctamente", detalles_viajes)
+
+        informe_final = os.path.join(tmpdir, "informe_final.xml")
+        print("Archivo informe_final creado correctamente", informe_final)
+        
+        emisiones_por_calle = os.path.join(tmpdir, "emisiones_por_calle.xml")
+        print("Archivo emisiones_por_calle creado correctamente", emisiones_por_calle)
 
         # 1. Descarga (usando el método de requests que vimos antes)
         print("Descargando datos de OSM")
@@ -324,6 +373,8 @@ async def websocket_simulation(websocket: WebSocket):
                     </time>
                 </configuration>""")
 
+        
+
         print("Archivos de configuración SUMO generados correctamente")
 
         # 4. Iniciar simulación con TraCI
@@ -337,10 +388,17 @@ async def websocket_simulation(websocket: WebSocket):
                 "-c", config_file,
                 "--step-length", "0.1",  # 1 segundo por paso
                 "--no-warnings", "true",
+                # "--additional-files", "tipos_vehiculos.add.xml",
                 "--device.rerouting.probability", "1.0", # Todos los coches pueden recalcular
                 "--device.rerouting.period", "1",        # Recalcular en cuanto cambie algo
                 "--device.rerouting.pre-period", "0",
-                "--ignore-route-errors", "true"          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
+                "--ignore-route-errors", "true",          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
+                "--statistic-output", "stats.xml",
+                "--tripinfo-output", "tripinfo.xml",
+                "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
+                "--emission-output", "emisiones_por_calle.xml",
+                "--emission-output.step-scaled", "true",
+                "--no-step-log", "true"
             ])
             
             # CALLES
@@ -364,6 +422,9 @@ async def websocket_simulation(websocket: WebSocket):
             # Ejecutar la simulación paso a paso
             step = 0
             await websocket.send_json({"simulationState":"1"})
+            total_co2_mg = 0.0
+            step_co2 = 0.0
+
             while step < duration_sec and traci.simulation.getMinExpectedNumber() > 0:
                 try:
                     traci.simulationStep()  # Avanzar un paso
@@ -401,6 +462,7 @@ async def websocket_simulation(websocket: WebSocket):
                         traci.vehicle.rerouteTraveltime(veh)
                         # Obtener posición (x, y) en la proyección de SUMO
                         x, y = traci.vehicle.getPosition(veh)
+                        step_co2 += traci.vehicle.getCO2Emission(veh)
                         
                         # Convertir a lon/lat (SUMO usa coordenadas proyectadas)
                         lon, lat = traci.simulation.convertGeo(x, y)
@@ -420,7 +482,7 @@ async def websocket_simulation(websocket: WebSocket):
 
                         await websocket.send_json({"vehiculo":vehiculo})
                     
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.01)
 
                     step += 1
                 except traci.TraCIException as e:
@@ -429,6 +491,48 @@ async def websocket_simulation(websocket: WebSocket):
                         # El parámetro --ignore-route-errors en el start suele bastar,
                         # pero aquí podrías manejar lógica extra.
                 
+
+            
+            total_co2_kg = total_co2_mg / 1000000
+            print(f"Total CO2: {total_co2_kg} kg")
+            await websocket.send_json({
+               "final_report": {
+                    "total_co2_kg": round(total_co2_kg, 2),
+                    "equivalent_trees_day": round(total_co2_kg / 0.06, 2) # Un árbol absorbe aprox 60g/día
+                }
+            })
+
+
+            # 1.1. Obtener emisiones por calle
+            emisiones_por_calle = {}
+            for edge_id in traci.edge.getIDList():
+                emisiones_por_calle[edge_id] = traci.edge.getCO2Emission(edge_id)
+
+            # 1.2. Calcular emisiones totales
+            total_co2_mg = sum(emisiones_por_calle.values())
+            total_co2_kg = total_co2_mg / 1_000_000
+
+            # 1.3. Preparar estadísticas
+            stats = {
+                "vehiculos_totales": traci.simulation.getArrivedNumber() + traci.simulation.getMinExpectedNumber(),
+                "emisiones_co2_actuales": total_co2_kg
+            }
+            print(f"Resumen de la simulación: {stats}")
+            await websocket.send_json({"stats":stats})
+            
+            # 2. Leer el archivo de emisiones generado
+            try:
+                with open(emisiones_por_calle, 'r') as f:
+                    # Leemos todo el contenido
+                    contenido = f.read()
+                    
+                    # Enviamos el contenido crudo al frontend
+                    # (El frontend tendrá que parsear este XML)
+                    await websocket.send_json({"emisiones_xml": contenido})
+                    print("Archivo de emisiones enviado al frontend")
+            except Exception as e:
+                print(f"Error leyendo el archivo de emisiones: {e}")
+
             # Cerrar TraCI
             traci.close()
             print("Simulación finalizada correctamente")
@@ -503,15 +607,23 @@ async def get_roads_websocket(websocket: WebSocket):
                 shape = edge.getShape()
                 coords = [net.convertXY2LonLat(x, y) for x, y in shape]
 
+                velocityStyle = getVelocityStyle(edge.getSpeed() * 3.6);
+
                 # Extraemos las propiedades que queremos
                 # Nota: edge.getName() devuelve el nombre de la calle de OSM
+                print("Edge ID:", edge)
                 properties = {
                     "id": edge.getID(),
                     "nombre": edge.getName() or "Calle sin nombre",
                     "tipo": edge.getType(),
                     "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
                     "carriles": edge.getLaneNumber(),
-                    "prohibida": False
+                    "tamaño": edge.getLength(),
+                    # "origen": edge,
+                    # "destino": edge.getTo(),
+                    # "prioridad": edge.getPriority(),    
+                    "prohibida": False,
+                    "color": velocityStyle
                 }
 
                 feature = {
@@ -527,7 +639,13 @@ async def get_roads_websocket(websocket: WebSocket):
             await websocket.close()
 
         except Exception as e:
+            await websocket.send_json({"mensaje": "Error en la descarga de carreteras: "+str(e)})
+            await websocket.close()
             raise HTTPException(status_code=500, detail=str(e))
+        
+        finally:
+            await websocket.send_json({"mensaje": "Descarga de carreteras finalizada 👍"})
+            await websocket.close()
 
         
 @app.websocket("/ws/getRoadsPamplona")
@@ -579,3 +697,4 @@ async def get_roads_websocket(websocket: WebSocket):
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+

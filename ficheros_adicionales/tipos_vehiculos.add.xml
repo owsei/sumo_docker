@@ -1,0 +1,56 @@
+<additional>
+    <vType id="turismo" 
+           vClass="passenger" 
+           guiShape="passenger" 
+           length="4.50" 
+           width="1.80" 
+           maxSpeed="50.0" 
+           accel="2.6" 
+           decel="4.5" 
+           color="yellow" 
+           emissionClass="HBEFA3/PC_Gasoline_Euro4"/>
+    
+    <vType id="policia" 
+           vClass="police" 
+           guiShape="police" 
+           length="4.50" 
+           width="1.80" 
+           maxSpeed="50.0" 
+           accel="2.6" 
+           decel="4.5" 
+           color="red" 
+           emissionClass="HBEFA3/PC_Gasoline_Euro4"/>
+
+    <vType id="villavesa" 
+           vClass="bus" 
+           guiShape="bus" 
+           length="12.00" 
+           width="2.50" 
+           maxSpeed="13.89" 
+           accel="1.2" 
+           decel="4.0" 
+           color="0,150,0" 
+           emissionClass="HBEFA3/Bus"/>
+
+    <vType id="camion" 
+           vClass="delivery" 
+           guiShape="truck" 
+           length="7.50" 
+           width="2.20" 
+           maxSpeed="22.22" 
+           accel="1.0" 
+           decel="3.5" 
+           color="blue" 
+           emissionClass="HBEFA3/LDV_Diesel_Euro3"/>
+
+    <vType id="emergencia" 
+           vClass="emergency" 
+           guiShape="emergency" 
+           length="5.50" 
+           maxSpeed="70.0" 
+           accel="4.0" 
+           decel="6.0" 
+           color="red" 
+           impatience="1.0" 
+           emissionClass="HBEFA3/PC_Diesel_Euro5"/>
+</additional>
