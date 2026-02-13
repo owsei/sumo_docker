@@ -87,12 +87,6 @@
                 <div class="accordion-body"><div id="final_report"></div></div>
                 </div>
             </div>
-        </div>
-        
-    </div>
-    
-    <div id="floating-layer-right">
-        <div class="accordion accordion-flush" id="accordionFlushMessages">
             <div class="accordion-item">
                 <h2 class="accordion-header" id="flush-messages">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseMessages" aria-expanded="false" aria-controls="flush-collapseOne">
@@ -107,8 +101,9 @@
                 </div>
             </div>
         </div>
+        
     </div>
-
+    
     <script>
 
         // const endPoint= "ws://owsei.ddns.net:8001/"
@@ -212,34 +207,48 @@
 
         function setForbiddenRoads(idRoad,nameRoad){
             forbiddenRoadsArray.push({id:idRoad,nombreCalle:nameRoad});
-            
-            
             htmlForbbidenRoads=''
             forbiddenRoadsArray.forEach(element => {
-                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element.id} <button onclick="enableForbiddenRoad('${element.id}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
+                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element.id} <button onclick="enableForbiddenRoad('${element.nombreCalle}','${element.id}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
             });
             document.getElementById('forbiddenRoads').innerHTML = htmlForbbidenRoads;
 
             if (simulacionIniciada){
                 closeEdgeWebsocket(idRoad);
             }
+        }
+
+        function openEdgeWebsocket(idEdge) {
+            const comando = {
+                action: "open_edge",
+                edge_id: idEdge
+            };
+            
+            socket.send(JSON.stringify(comando));
+            console.log("Enviando petición de apertura para:", idEdge);
 
         }
 
         function removeItemOnce(arr, value) {
-            var index = arr.indexOf(value);
-            if (index > -1) {
-                arr.splice(index, 1);
-            }
-            return arr;
-            }
+            return arr.filter(item => item.id !== value.id);
+        }
 
-        function enableForbiddenRoad(idEdge){
-            forbiddenRoadsArray = removeItemOnce(forbiddenRoadsArray, idEdge);
+        function enableForbiddenRoad(nombreCalle,idEdge){
+            forbiddenRoadsArray = removeItemOnce(forbiddenRoadsArray, {id:idEdge,nombreCalle:nombreCalle});
             document.getElementById('forbiddenRoads').innerHTML = '';
             forbiddenRoadsArray.forEach(element => {
-                document.getElementById('forbiddenRoads').innerHTML+=`<div class="alert alert-danger" role="alert">${nameRoad} - ${element} <button onclick="enableForbiddenRoad('${element}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
+                document.getElementById('forbiddenRoads').innerHTML+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element} <button onclick="enableForbiddenRoad('${element.nombreCalle}','${element.id}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
             });
+            
+            let entidad = viewer.entities.values.filter(e => e.properties && e.properties.id && e.properties.id.getValue() === idEdge);
+            console.log(entidad);
+            if (entidad.length>0) {
+                let color=entidad[0].properties.color.getValue();
+                entidad[0].polyline.material.color = color;
+            }
+            if (simulacionIniciada){
+                openEdgeWebsocket(idEdge);
+            }
         }
 
         function getVelocityStyle(velocity) {
@@ -401,9 +410,15 @@
                         <div id="tablaProperties${datosLineString.properties.id}"  class="tablePorperties" >
                             <p>Información de la entidad</p>
                             <p>ID: ${datosLineString.properties.id}</p>
+                            <p>Carriles: ${datosLineString.properties.carriles}</p>
                             <p>Calle: ${datosLineString.properties.nombre}</p>
                             <p>Velocidad máxima: ${datosLineString.properties.velocidad_max}</p>
                             <p>Prohibida: ${datosLineString.properties.prohibida}</p>
+                            <p>Color: ${datosLineString.properties.color}</p>
+                            <p>Tamaño: ${datosLineString.properties.tamaño}</p>
+                            <p>Origen: ${datosLineString.properties.origen}</p>
+                            <p>Destino: ${datosLineString.properties.destino}</p>
+                            <p>Prioridad: ${datosLineString.properties.prioridad}</p>
                             <button id="${datosLineString.properties.id}" class="cesium-button">
                                 Prohibir ⛔
                             </button>
@@ -437,7 +452,6 @@
         // LLAMADAS A LA APIs
         // WEBSOCKET
         // Test websocket
-        
         async function getRoadsWebsocket(){
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
@@ -495,7 +509,7 @@
             if (!bounds) return;
             // Eliminar el rectángulo de la selección
             viewer.entities.remove(rectangleEntity);
-        document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...<br/>";
+            document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...<br/>";
             const payload = {
                 west: Cesium.Math.toDegrees(bounds.west),
                 south: Cesium.Math.toDegrees(bounds.south),
@@ -530,6 +544,12 @@
 
                 if (data.calle_cerrada ) {
                     document.getElementById('messages-websocket').innerHTML += data.calle_cerrada + "<br/>";
+                    return;
+                }
+
+                if (data.calle_abierta ) {
+                    document.getElementById('messages-websocket').innerHTML += data.calle_abierta + "<br/>";
+                    
                     return;
                 }
 
@@ -649,7 +669,6 @@
                 }
             }
         }
-
 
         function testConnectionProxy(){
             // Antes: const socket = new WebSocket('ws://localhost:8001/ws/status');

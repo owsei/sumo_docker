@@ -259,7 +259,7 @@
 
 #floating-layer-right {
     position: absolute;
-    top: 150px;
+    top: 350px;
     right: 10px;
     width: 450px;
     max-height: 90vh; /* Ocupa casi toda la pantalla verticalmente */

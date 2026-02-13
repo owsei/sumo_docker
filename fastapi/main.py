@@ -451,6 +451,26 @@ async def websocket_simulation(websocket: WebSocket):
                             
                             # Confirmar al frontal
                             await websocket.send_json({"type": "status", "msg": f"Calle {edge_id} cerrada"})
+
+                        if data.get("action") == "open_edge":
+                            edge_id = data.get("edge_id")
+                            await websocket.send_json({"calle_abierta":"Abriendo calle " + edge_id})
+                            try:
+                                # Lógica de cierre en SUMO
+                                traci.edge.setAllowed(edge_id, ["all"])  # Prohibir paso
+                                traci.edge.setEffort(edge_id, 1) # Avisar al GPS
+                            
+                            
+                                # Forzar rerouting a los coches que ya están en el mapa
+                                for veh_id in traci.vehicle.getIDList():
+                                    traci.vehicle.rerouteTraveltime(veh_id)
+
+                                await websocket.send_json({"calle_abierta":"Calle abierta correctamente " + edge_id})
+                            except Exception as e:
+                                await websocket.send_json({"calle_abierta":"Error al abrir la calle " + edge_id + " " + str(e)})
+                            
+                            # Confirmar al frontal
+                            await websocket.send_json({"type": "status", "msg": f"Calle {edge_id} abierta"})
                     
                     except asyncio.TimeoutError:
                         # No hay mensajes nuevos, seguimos la simulación
