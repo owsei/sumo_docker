@@ -114,20 +114,20 @@ def convert_net_to_geojson_net(net_file):
 
 def getVelocityStyle(velocity):
 
-            if (velocity>119):
-                return "blue"
-            elif (velocity>101 and velocity<=119):
-                return "green"
-            elif (velocity>80 and velocity<=101):
-                return "yellow"
-            elif (velocity>60 and velocity<=80):
-                return "purple"
-            elif (velocity>40 and velocity<=60):
-                return "orange"
-            elif (velocity>20 and velocity<=40):
-                return "white"
-            else:
-                return "gray"
+    if (velocity>119):
+        return "blue"
+    elif (velocity>101 and velocity<=119):
+        return "green"
+    elif (velocity>80 and velocity<=101):
+        return "yellow"
+    elif (velocity>60 and velocity<=80):
+        return "purple"
+    elif (velocity>40 and velocity<=60):
+        return "orange"
+    elif (velocity>20 and velocity<=40):
+        return "white"
+    else:
+        return "gray"
 
 
 async def sendCreateRoads(net_file):
@@ -595,7 +595,6 @@ async def get_roads_websocket(websocket: WebSocket):
     with tempfile.TemporaryDirectory() as tmpdir:
         osm_file = os.path.join(tmpdir, "mapa.osm.xml")
         net_file = os.path.join(tmpdir, "mapa.net.xml")
-        net_file = os.path.join(tmpdir, "pamplona_v1.net.xml")
 
         try:
             # 1. Descarga (usando el método de requests que vimos antes)
@@ -611,6 +610,11 @@ async def get_roads_websocket(websocket: WebSocket):
                 "--osm-files", osm_file,
                 "--output-file", net_file,
                 "--geometry.remove", "true",
+                "--junctions.join", "true",
+                # "--tls.guess-signals","true",
+                # "--tls.discard-simple","true",
+                # "--tls.join","true",
+                # "--tls.default-type","actuated",
                 "--proj.utm", "true",
                 "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
                 "--remove-edges.isolated", "true",
@@ -619,43 +623,88 @@ async def get_roads_websocket(websocket: WebSocket):
             print("Red de SUMO generada correctamente")
             # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
             net = sumolib.net.readNet(net_file)
-            features = []
-
+            
+            # INSERCION DE CARRETERAS
             for edge in net.getEdges():
-                # Obtenemos la geometría (forma) de la carretera
-                # Convertimos las coordenadas internas de SUMO a Lon/Lat
-                shape = edge.getShape()
-                coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+                for lane in edge.getLanes():
+                    # Obtenemos la geometría (forma) de la carretera
+                    # Convertimos las coordenadas internas de SUMO a Lon/Lat
+                    idLane=lane.getID()
+                    shape = lane.getShape()
+                    coords = [net.convertXY2LonLat(x, y) for x, y in shape]
 
-                velocityStyle = getVelocityStyle(edge.getSpeed() * 3.6);
+                    velocityStyle = getVelocityStyle(lane.getSpeed() * 3.6)
 
-                # Extraemos las propiedades que queremos
-                # Nota: edge.getName() devuelve el nombre de la calle de OSM
-                print("Edge ID:", edge)
-                properties = {
-                    "id": edge.getID(),
-                    "nombre": edge.getName() or "Calle sin nombre",
-                    "tipo": edge.getType(),
-                    "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
-                    "carriles": edge.getLaneNumber(),
-                    "tamaño": edge.getLength(),
-                    # "origen": edge,
-                    # "destino": edge.getTo(),
-                    # "prioridad": edge.getPriority(),    
-                    "prohibida": False,
-                    "color": velocityStyle
-                }
+                    # Extraemos las propiedades que queremos
+                    # Nota: edge.getName() devuelve el nombre de la calle de OSM
+                    print("Edge ID:", idLane)
+                    properties = {
+                        "type": "lane",
+                        "id": idLane,
+                        "nombre": edge.getName() or "Calle sin nombre",
+                        "tipo": edge.getType(),
+                        "velocidad_max": lane.getSpeed() * 3.6, # Convertir m/s a km/h
+                        # "carriles": edge.getLaneNumber(),
+                        "tamaño": lane.getLength(),
+                        # "origen": edge,
+                        # "destino": edge.getTo(),
+                        # "prioridad": edge.getPriority(),    
+                        "prohibida": False,
+                        "color": velocityStyle,
+                        # "orientation": lane.getAngle(lane.getEdgeID(),None),
+                        "edgeID": edge.getID()
+                    }
 
-                feature = {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": coords
-                    },
-                    "properties": properties
-                }
-                await websocket.send_json(feature)
+                    feature = {
+                        "type": "feature",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": coords
+                        },
+                        "properties": properties
+                    }
+                    await websocket.send_json(feature)
             await websocket.send_json({"mensaje": "Descarga de carreteras finalizada correctamente👍"})
+            
+            # INSERCION DE SEMAFOROS
+            # Obtener todos los sistemas de semáforos de la red
+            for tls in net.getTrafficLights():
+                tls_id = tls.getID()
+
+                # Un semáforo puede controlar varias conexiones (links)
+                for connection in tls.getConnections():
+                    from_lane = connection[0]
+                    to_lane = connection[1]
+                    link_index = connection[2] # Índice del estado en el semáforo
+        
+                    # Posición: Normalmente se sitúan al final del carril de entrada
+                    # Obtenemos el último punto de la geometría del carril
+                    shape = from_lane.getShape()
+                    coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+                
+                    # Convertir a coordenadas Lon/Lat para Cesium
+                    # Orientación: Podemos calcularla basándonos en la dirección del carril
+                    # angulo_sumo = from_lane.getAngle( idLane,relativePosition=tc.INVALID_DOUBLE_VALUE)
+
+                    properties={
+                        "type": "trafficlight",
+                        "id": f"{tls_id}_{link_index}",
+                        # "angle": angulo_sumo,
+                        "tls_id": tls_id
+                    }
+
+                    feature = {
+                        "type": "feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": coords,
+                        },
+                        # "orientation": angulo_sumo,
+                        "properties": properties
+                    }
+                    await websocket.send_json(feature)
+                await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍"})
+            
             await websocket.close()
 
         except Exception as e:
@@ -672,13 +721,25 @@ async def get_roads_websocket(websocket: WebSocket):
 async def get_roads_websocket(websocket: WebSocket):
     await websocket.accept()
 
-    sumo_home = os.environ.get("SUMO_HOME")
+
+    #DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
+    operativeSytemIsLinux= 0 if platform.system()=="Linux" else 1
+    if operativeSytemIsLinux==0:
+       sumo_home = "/usr/share/sumo"
+    else:
+        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
+
     if not sumo_home:
         sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
+    
+    net_file = ""
 
     print("Ruta de SUMO encontrada correctamente", sumo_home)
     with tempfile.TemporaryDirectory() as tmpdir:
-        net_file = os.path.join(tmpdir, "pamplona_v1.net.xml")
+        if operativeSytemIsLinux==0:
+            net_file = os.path.join(tmpdir, "pamplona_v1.net.xml")
+        else:
+            net_file = os.path.join(r"D:\Proyectos\SUMO_DOCKER\red_carreteras", "zona-sancho-el-fuerte.net.xml")
 
         try:
             # 1. Descarga (usando el método de requests que vimos antes)
