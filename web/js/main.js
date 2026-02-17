@@ -193,7 +193,7 @@
 
         
         
-        function crearLineString(datosLineString,altura=0) {
+        function crearLaneString(datosLineString,altura=0) {
             const coordenadas = datosLineString.geometry.coordinates; 
             const posiciones = coordenadas.map(coord => {
             const [lon, lat] = coord;
@@ -244,6 +244,33 @@
             });
         }
 
+        function createJunction(feature){   
+            const coordenadas = feature.geometry.coordinates; 
+
+            window.viewer.entities.add({
+            properties: {
+                id: feature.properties.id,
+                tipo: feature.properties.tipo,
+            },
+            polygon: {
+                hierarchy: new Cesium.PolygonHierarchy(coordenadas),
+                material: Cesium.Color.fromCssColorString("darkred"),
+                outline: true,
+                outlineColor: Cesium.Color.BLACK,
+                clampToGround: true, // Para que el polígono se ajuste al terreno
+                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND, // Úsalo si el polígono está en terreno
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            description: `
+                        <div id="tablaProperties${feature.properties.id}"  class="tablePorperties" >
+                            <p>Información de la entidad</p>
+                            <p>ID: ${feature.properties.id}</p>
+                            <p>Tipo: ${feature.properties.tipo}</p>
+                        </div>
+                    `,
+            });
+        }
+
         function createTrafficLight(feature){
             const coordenadas = feature.geometry.coordinates; 
             const posiciones = coordenadas.map(coord => {
@@ -251,17 +278,18 @@
                 return Cesium.Cartesian3.fromDegrees(lon, lat, 0);
             });
 
-            // const heading = Cesium.Math.toRadians(feature.angle);
-            // const orientation = Cesium.Transforms.headingPitchRollQuaternion(
-            //     Cesium.Cartesian3.fromDegrees(feature.lon, feature.lat),
-            //     new Cesium.HeadingPitchRoll(heading, 0, 0)
-            // );
 
             window.viewer.entities.add({
                 position: posiciones,
                 // orientation: orientation,
                 // model: { uri: '3DObjets/semaforo.glb' },
                 material : Cesium.Color.fromCssColorString(feature.properties.color?feature.properties.color:"darkred"),
+                polyline: {
+                    positions: posiciones,
+                    material : Cesium.Color.fromCssColorString("darkred"),
+                    width: 7,
+                    clampToGround: true // Para que la línea se ajuste al terreno
+                },
                 description: `
                         <div id="tablaProperties${feature.properties.id}"  class="tablePorperties" >
                             <p>Información de la entidad</p>
@@ -275,9 +303,6 @@
                     `
             });
         }
-
-
-        
 
 
         // LLAMADAS A LA APIs
@@ -313,11 +338,15 @@
                 console.log(data);
                 if (data.type=="feature"){
                     if(data.properties.type=="edge" || data.properties.type=="lane"){
-                        crearLineString(data);
+                        crearLaneString(data);
                         return;
                     }
                     if(data.properties.type=="trafficlight"){
                         createTrafficLight(data);
+                        return;
+                    }
+                    if(data.properties.type=="junction"){
+                        createJunction(data);
                         return;
                     }
                 }
@@ -338,7 +367,7 @@
                     return;
                 }
                 
-                crearLineString(data);
+                crearLaneString(data);
             }
         }
 
@@ -414,7 +443,8 @@
                 
                     console.log('Datos de vehículos:', data);
                     const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude);
-                    if (!vehicles[data.id]) {
+
+                    if (!vehicles.hasOwnProperty(data.id)) {
                         // Crear el vehículo si no existe
                         const orientation = Cesium.Transforms.headingPitchRollQuaternion(
                             position,
@@ -424,19 +454,19 @@
                         const random_number = Math.floor(Math.random() * 7) + 1;
                         let URI_Coche;
                         if (random_number === 1) {
-                            URI_Coche = "3DObjets/coches/forales.glb";
+                            URI_Coche = "../3dobjects/coches/forales.glb";
                         } else if (random_number === 2) {
-                            URI_Coche = "3DObjets/coches/cocheAzulCubo.glb";
+                            URI_Coche = "../3dobjects/coches/cocheAzulCubo.glb";
                         } else if (random_number === 3) {
-                            URI_Coche = "3DObjets/coches/cocheVerdeCubo.glb";
+                            URI_Coche = "../3dobjects/coches/cocheVerdeCubo.glb";
                         } else if (random_number === 4) {
-                            URI_Coche = "3DObjets/coches/cocheRojoCubo.glb";
+                            URI_Coche = "../3dobjects/coches/cocheRojoCubo.glb";
                         } else if (random_number === 5) {
-                            URI_Coche = "3DObjets/coches/cocheAmarilloCubo.glb";
+                            URI_Coche = "../3dobjects/coches/cocheAmarilloCubo.glb";
                         } else if (random_number === 6) {
-                            URI_Coche = "3DObjets/coches/cocheMoradoCubo.glb";
+                            URI_Coche = "../3dobjects/coches/cocheMoradoCubo.glb";
                         } else if (random_number === 7) {
-                            URI_Coche = "3DObjets/coches/cocheNegroCubo.glb"
+                            URI_Coche = "../3dobjects/coches/cocheNegroCubo.glb"
                         }
 
                         

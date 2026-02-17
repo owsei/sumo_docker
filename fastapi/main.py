@@ -19,6 +19,8 @@ import traci
 from urllib.parse import unquote
 import platform
 import asyncio
+from pyproj import Geod
+import math
 
 app = FastAPI()
 
@@ -158,7 +160,18 @@ async def sendCreateRoads(net_file):
             "properties": properties
         }
         await websocket.send_json(feature)
+
+
+def calcular_heading_preciso(lat1, lon1, lat2, lon2):
+    geod = Geod(ellps="WGS84")
+    # fwd_azimuth es el ángulo hacia adelante (azimut)
+    # inv_azimuth es el ángulo de regreso
+    fwd_azimuth, inv_azimuth, distance = geod.inv(lon1, lat1, lon2, lat2)
     
+    # pyproj devuelve grados de -180 a 180. 
+    # Cesium prefiere radianes.
+    heading_rad = math.radians((fwd_azimuth + 360) % 360)
+    return heading_rad 
 
 @app.get("/")
 async def root():
@@ -179,9 +192,6 @@ async def websocket_status(websocket: WebSocket):
         print(f"Error en WebSocket: {e}")
     finally:
         await websocket.close()
-
-
-
 
 @app.post("/get-roads")
 async def get_roads(bbox: BoundingBox):
@@ -406,6 +416,10 @@ async def websocket_simulation(websocket: WebSocket):
             print("Total de calles: ", len(edges))
             await websocket.send_json({"mensaje":"Total de calles: "+ str(len(edges))})
 
+            lanes=traci.lane.getIDList()
+            print("Total de carriles: ", len(lanes))
+            await websocket.send_json({"mensaje":"Total de carriles: "+ str(len(lanes))})
+
             # PROHIBIR CALLES
             for edge_id in edges:
                 if (edge_id in forbiddenRoadsArray):
@@ -414,11 +428,13 @@ async def websocket_simulation(websocket: WebSocket):
                     print("Calle prohibida: ", edge_id)
                     await websocket.send_json({"mensaje":"Calle prohibida: "+ edge_id})
 
-            #SEMAFOROS
-            trafficLights=traci.trafficlight.getIDList()
-            print("Total de semáforos: ", len(trafficLights))
-            await websocket.send_json({"semaforos": len(trafficLights)})
+            for lane_id in lanes:
+                if (lane_id in forbiddenRoadsArray):
+                    traci.lane.setAllowed(lane_id, [])
+                    print("Carril prohibido: ", lane_id)
+                    await websocket.send_json({"mensaje":"Carril prohibido: "+ lane_id})
 
+            #SEMAFOROS
             # Ejecutar la simulación paso a paso
             step = 0
             await websocket.send_json({"simulationState":"1"})
@@ -438,13 +454,16 @@ async def websocket_simulation(websocket: WebSocket):
                             await websocket.send_json({"calle_cerrada":"Cerrando calle " + edge_id})
                             try:
                                 # Lógica de cierre en SUMO
-                                traci.edge.setAllowed(edge_id, [])  # Prohibir paso
-                                traci.edge.setEffort(edge_id, 999999) # Avisar al GPS
+                                # traci.edge.setAllowed(edge_id, [])  # Prohibir paso
+                                # traci.edge.setEffort(edge_id, 999999) # Avisar al GPS
                             
+                                traci.lane.setAllowed(edge_id, ["all"])  
+                                traci.lane.setMaxSpeed(edge_id, 0.1)
                             
                                 # Forzar rerouting a los coches que ya están en el mapa
                                 for veh_id in traci.vehicle.getIDList():
-                                    traci.vehicle.rerouteTraveltime(veh_id)
+                                    if traci.vehicle.getRoadID(veh_id) == edge_id:
+                                        traci.vehicle.rerouteTraveltime(veh_id)
                                 await websocket.send_json({"calle_cerrada":"Calle cerrada correctamente " + edge_id})
                             except Exception as e:
                                 await websocket.send_json({"calle_cerrada":"Error al cerrar la calle " + edge_id + " " + str(e)})
@@ -457,13 +476,16 @@ async def websocket_simulation(websocket: WebSocket):
                             await websocket.send_json({"calle_abierta":"Abriendo calle " + edge_id})
                             try:
                                 # Lógica de cierre en SUMO
-                                traci.edge.setAllowed(edge_id, ["all"])  # Prohibir paso
-                                traci.edge.setEffort(edge_id, 1) # Avisar al GPS
+                                # traci.edge.setAllowed(edge_id, ["all"])  # Prohibir paso
+                                # traci.edge.setEffort(edge_id, 1) # Avisar al GPS
                             
+                                traci.lane.setAllowed(edge_id,  ["all"])  # Prohibir paso
+                                traci.lane.setMaxSpeed(edge_id, 13.89) # Avisar al GPS
                             
                                 # Forzar rerouting a los coches que ya están en el mapa
                                 for veh_id in traci.vehicle.getIDList():
-                                    traci.vehicle.rerouteTraveltime(veh_id)
+                                    if traci.vehicle.getRoadID(veh_id) == edge_id:
+                                        traci.vehicle.rerouteTraveltime(veh_id)
 
                                 await websocket.send_json({"calle_abierta":"Calle abierta correctamente " + edge_id})
                             except Exception as e:
@@ -621,8 +643,9 @@ async def get_roads_websocket(websocket: WebSocket):
                 "--output.street-names", "true"
             ], check=True)  
             print("Red de SUMO generada correctamente")
-            # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
-            net = sumolib.net.readNet(net_file)
+            
+            # 3. FUNCION DE LEER LA RED GENERADA DE OSM
+            net = sumolib.net.readNet(net_file, withInternal=True, withPedestrianConnections=True,withLatestPrograms=True)
             
             # INSERCION DE CARRETERAS
             for edge in net.getEdges():
@@ -668,42 +691,32 @@ async def get_roads_websocket(websocket: WebSocket):
             
             # INSERCION DE SEMAFOROS
             # Obtener todos los sistemas de semáforos de la red
-            for tls in net.getTrafficLights():
-                tls_id = tls.getID()
+            for junction in net.getNodes():
+                idJunction =junction.getID()
+                # Obtener el polígono de la unión
+                shape = junction.getShape()
+                coordinates = []
+                for x, y in shape:
+                    lon, lat = net.convertXY2LonLat(x, y)
+                    coordinates.append([lon, lat])
 
-                # Un semáforo puede controlar varias conexiones (links)
-                for connection in tls.getConnections():
-                    from_lane = connection[0]
-                    to_lane = connection[1]
-                    link_index = connection[2] # Índice del estado en el semáforo
-        
-                    # Posición: Normalmente se sitúan al final del carril de entrada
-                    # Obtenemos el último punto de la geometría del carril
-                    shape = from_lane.getShape()
-                    coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+                if coordinates:
+                    coordinates.append(coordinates[0])
+
+                feature = {
+                    "type": "feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [coordinates]
+                    },
+                    "properties": {
+                        "id": idJunction,
+                        "type": "junction",
+                    }
+                }
                 
-                    # Convertir a coordenadas Lon/Lat para Cesium
-                    # Orientación: Podemos calcularla basándonos en la dirección del carril
-                    # angulo_sumo = from_lane.getAngle( idLane,relativePosition=tc.INVALID_DOUBLE_VALUE)
-
-                    properties={
-                        "type": "trafficlight",
-                        "id": f"{tls_id}_{link_index}",
-                        # "angle": angulo_sumo,
-                        "tls_id": tls_id
-                    }
-
-                    feature = {
-                        "type": "feature",
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": coords,
-                        },
-                        # "orientation": angulo_sumo,
-                        "properties": properties
-                    }
-                    await websocket.send_json(feature)
-                await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍"})
+                await websocket.send_json(feature)
+            await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍"})
             
             await websocket.close()
 
@@ -716,7 +729,6 @@ async def get_roads_websocket(websocket: WebSocket):
             await websocket.send_json({"mensaje": "Descarga de carreteras finalizada 👍"})
             await websocket.close()
 
-        
 @app.websocket("/ws/getRoadsPamplona")
 async def get_roads_websocket(websocket: WebSocket):
     await websocket.accept()
