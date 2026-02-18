@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     sumo sumo-tools python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./red_carreteras/pamplona_v1.net.xml /tmp/pamplona_v1.net.xml
+# COPY ./red_carreteras/pamplona_v1.net.xml /tmp/pamplona_v1.net.xml
 COPY ./red_carreteras/zona-sancho-el-fuerte.net.xml /tmp/zona-sancho-el-fuerte.net.xml
 COPY ./ficheros_adicionales/tipos_vehiculos.add.xml /tmp/tipos_vehiculos.add.xml
 
