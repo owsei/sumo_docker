@@ -109,10 +109,36 @@ def convert_net_to_geojson_net(net_file):
         }
         features.append(feature)
 
+    # Obtener todos los sistemas de semáforos (TLS)
+    semaforos = net.getTrafficLights()
+
+    for tls in semaforos:
+        tls_id = tls.getID()
+        # Los semáforos están asociados a nodos (junctions)
+        nodos = tls.getNodes()
+        for nodo in nodos:
+            x, y = nodo.getCoord()
+            lon, lat = net.convertXY2LonLat(x, y)
+            properties = {
+                "id": tls_id,
+                "tipo": "trafficlight"
+            }
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [lon, lat]
+                },
+                "properties": properties
+            }
+            features.append(feature)
+
     return {
         "type": "FeatureCollection",
         "features": features
     }
+
+
 
 def getVelocityStyle(velocity):
 
@@ -130,7 +156,6 @@ def getVelocityStyle(velocity):
         return "white"
     else:
         return "gray"
-
 
 async def sendCreateRoads(net_file):
     net = sumolib.net.readNet(net_file)
@@ -161,7 +186,6 @@ async def sendCreateRoads(net_file):
         }
         await websocket.send_json(feature)
 
-
 def calcular_heading_preciso(lat1, lon1, lat2, lon2):
     geod = Geod(ellps="WGS84")
     # fwd_azimuth es el ángulo hacia adelante (azimut)
@@ -172,6 +196,17 @@ def calcular_heading_preciso(lat1, lon1, lat2, lon2):
     # Cesium prefiere radianes.
     heading_rad = math.radians((fwd_azimuth + 360) % 360)
     return heading_rad 
+
+def getTrafficLightColor(state):
+    match state:
+        case "r" | "R":
+            return "red"
+        case "y" | "Y":
+            return "yellow"
+        case "g" | "G":
+            return "green"
+        case _:
+            return "gray"  
 
 @app.get("/")
 async def root():
@@ -221,7 +256,9 @@ async def get_roads(bbox: BoundingBox):
                 "--geometry.remove", "true",
                 "--proj.utm", "true",
                 "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-                "--remove-edges.isolated", "true"
+                "--remove-edges.isolated", "true",
+                "--tls.guess","true",
+                "--tls.join", "true"
             ], check=True)  
             print("Red de SUMO generada correctamente")
             # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
@@ -242,18 +279,21 @@ async def websocket_simulation(websocket: WebSocket):
     num_vehicles = int(websocket.query_params.get("num_vehicles"))
     print("Numero de vehiculos: ", num_vehicles)
     duration_sec = int(websocket.query_params.get("duration_sec"))
+    print("Duracion de la simulacion: ", duration_sec)
+    zonaSnachoFuerte = int(websocket.query_params.get("zonaSnachoFuerte"))
+    print("Zona Snacho Fuerte: ", zonaSnachoFuerte)
     
 
     forbiddenRoads = unquote(forbiddenRoads)
     forbiddenRoadsArray = json.loads(forbiddenRoads)
 
-    if not bbox_str:
+    if not bbox_str and zonaSnachoFuerte==0:
         raise HTTPException(status_code=400, detail="Missing bbox parameter")
-    
-    try:
-        bbox = BoundingBox(**json.loads(bbox_str))
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid bbox format")
+    else:
+        try:
+            bbox = BoundingBox(**json.loads(bbox_str))
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid bbox format")
     
    
     #DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
@@ -291,40 +331,47 @@ async def websocket_simulation(websocket: WebSocket):
         print("Descargando datos de OSM")
         await websocket.send_json({"mensaje":"Descargando datos OSM"})
 
-        download_osm_data(bbox, osm_file)
-        print("Datos de OSM descargados correctamente")
-        await websocket.send_json({"mensaje":"Datos de OSM descargados correctamente"})
 
-        sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
-        
-        # 2. Generar red de SUMO
-        print("Generando red de SUMO")
-        await websocket.send_json({"mensaje":"Generando red de SUMO"})
-
-        
-        
-        if operativeSytemIsLinux==0:
-            subprocess.run([
-                "netconvert",
-                "--osm-files", osm_file,
-                "--output-file", net_file,
-                "--geometry.remove", "true",
-                "--proj.utm", "true",
-                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-                "--remove-edges.isolated", "true"
-            ], check=True)
+        if zonaSnachoFuerte==1:
+            net_file = os.path.join(tmpdir, "zona-sancho-el-fuerte.net.xml")
+            await websocket.send_json({"mensaje":"Red de sancho el fuerte descargada correctamente"})
         else:
-            subprocess.run([
-                os.path.join(sumo_home, "bin", "netconvert"),
-                "--osm-files", osm_file,
-                "--output-file", net_file,
-                "--geometry.remove", "true",
-                "--proj.utm", "true",
-                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-                "--remove-edges.isolated", "true"
-            ], check=True)
+            download_osm_data(bbox, osm_file)
+            print("Datos de OSM descargados correctamente")
+            await websocket.send_json({"mensaje":"Datos de OSM descargados correctamente"})
 
+            sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
+        
+            # 2. Generar red de SUMO
+            print("Generando red de SUMO")
+            await websocket.send_json({"mensaje":"Generando red de SUMO"})
+        
 
+        
+            if operativeSytemIsLinux==0:
+                subprocess.run([
+                    "netconvert",
+                    "--osm-files", osm_file,
+                    "--output-file", net_file,
+                    "--geometry.remove", "true",
+                    "--proj.utm", "true",
+                    "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
+                    "--remove-edges.isolated", "true",
+                    "--tls.guess","true",
+                    "--tls.join", "true"
+                ], check=True)
+            else:
+                subprocess.run([
+                    os.path.join(sumo_home, "bin", "netconvert"),
+                    "--osm-files", osm_file,
+                    "--output-file", net_file,
+                    "--geometry.remove", "true",
+                    "--proj.utm", "true",
+                    "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
+                    "--remove-edges.isolated", "true",
+                    "--tls.guess","true",
+                    "--tls.join", "true"
+                ], check=True)
 
         print("Red generada correctamente")
         await websocket.send_json({"mensaje":"Red generada correctamente"})
@@ -332,7 +379,6 @@ async def websocket_simulation(websocket: WebSocket):
         # 3. Generar tráfico aleatorio
         print("Generando tráfico aleatorio")
         await websocket.send_json({"mensaje":"Generando tráfico aleatorio"})
-        
 
         period = duration_sec / num_vehicles if num_vehicles > 0 else 100
         print("Periodo: ", period)
@@ -346,7 +392,7 @@ async def websocket_simulation(websocket: WebSocket):
                 "-r", route_file,
                 "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
                 "--period", str(period), # Aparece un coche cada 0.5 segundos
-                "--fringe-factor", "10000"
+                "--fringe-factor", "10"
             ], check=True)  
         else:
             procesoTraffic=subprocess.run([
@@ -355,7 +401,7 @@ async def websocket_simulation(websocket: WebSocket):
                 "-r", route_file,
                 "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
                 "--period", str(period), # Aparece un coche cada 0.5 segundos
-                "--fringe-factor", "10000"
+                "--fringe-factor", "10"
             ], check=True)  
 
         print("Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos") 
@@ -381,6 +427,10 @@ async def websocket_simulation(websocket: WebSocket):
                         <begin value="0"/>
                         <end value="{str(duration_sec)}"/>
                     </time>
+                    <routing>
+                        <device.rerouting.probability value="1.0"/>
+                        <device.rerouting.period value="10"/>
+                    </routing>
                 </configuration>""")
 
         
@@ -389,7 +439,6 @@ async def websocket_simulation(websocket: WebSocket):
 
         # 4. Iniciar simulación con TraCI
         try:
-             
             traciBinary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
             print("Iniciando simulación")
             await websocket.send_json({"mensaje":"Iniciando simulación"})
@@ -403,10 +452,10 @@ async def websocket_simulation(websocket: WebSocket):
                 "--device.rerouting.period", "1",        # Recalcular en cuanto cambie algo
                 "--device.rerouting.pre-period", "0",
                 "--ignore-route-errors", "true",          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
-                "--statistic-output", "stats.xml",
-                "--tripinfo-output", "tripinfo.xml",
+                "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
+                "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
                 "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
-                "--emission-output", "emisiones_por_calle.xml",
+                "--emission-output", "emisiones_por_calle.xml",   #muestra informacion al final de la simulacion
                 "--emission-output.step-scaled", "true",
                 "--no-step-log", "true"
             ])
@@ -441,6 +490,10 @@ async def websocket_simulation(websocket: WebSocket):
             total_co2_mg = 0.0
             step_co2 = 0.0
 
+            # Inicializar el diccionario de semáforos
+            trafficLightDictionary = []
+            net = sumolib.net.readNet(net_file, withInternal=True, withPedestrianConnections=True,withLatestPrograms=True)
+
             while step < duration_sec and traci.simulation.getMinExpectedNumber() > 0:
                 try:
                     traci.simulationStep()  # Avanzar un paso
@@ -461,9 +514,9 @@ async def websocket_simulation(websocket: WebSocket):
                                 traci.lane.setMaxSpeed(edge_id, 0.1)
                             
                                 # Forzar rerouting a los coches que ya están en el mapa
-                                for veh_id in traci.vehicle.getIDList():
-                                    if traci.vehicle.getRoadID(veh_id) == edge_id:
-                                        traci.vehicle.rerouteTraveltime(veh_id)
+                                # for veh_id in traci.vehicle.getIDList():
+                                #     if traci.vehicle.getRoadID(veh_id) == edge_id:
+                                #         traci.vehicle.rerouteTraveltime(veh_id)
                                 await websocket.send_json({"calle_cerrada":"Calle cerrada correctamente " + edge_id})
                             except Exception as e:
                                 await websocket.send_json({"calle_cerrada":"Error al cerrar la calle " + edge_id + " " + str(e)})
@@ -483,9 +536,9 @@ async def websocket_simulation(websocket: WebSocket):
                                 traci.lane.setMaxSpeed(edge_id, 13.89) # Avisar al GPS
                             
                                 # Forzar rerouting a los coches que ya están en el mapa
-                                for veh_id in traci.vehicle.getIDList():
-                                    if traci.vehicle.getRoadID(veh_id) == edge_id:
-                                        traci.vehicle.rerouteTraveltime(veh_id)
+                                # for veh_id in traci.vehicle.getIDList():
+                                #     if traci.vehicle.getRoadID(veh_id) == edge_id:
+                                #         traci.vehicle.rerouteTraveltime(veh_id)
 
                                 await websocket.send_json({"calle_abierta":"Calle abierta correctamente " + edge_id})
                             except Exception as e:
@@ -525,7 +578,28 @@ async def websocket_simulation(websocket: WebSocket):
                         await websocket.send_json({"vehiculo":vehiculo})
                     
                     await asyncio.sleep(0.01)
+                    # INSERCION DE SEMAFOROS
+                    
+                    # # Semaforos
+                    for tflID in traci.trafficlight.getIDList():
+                        position = traci.junction.getPosition(tflID)
+                        lon, lat = traci.simulation.convertGeo(position[0], position[1])
+                        edgesIncoming = traci.junction.getIncomingEdges(tflID)
+                        edgesOutgoing = traci.junction.getOutgoingEdges(tflID)
+                        state=traci.trafficlight.getRedYellowGreenState(tflID)
+                        tfl ={
+                            "id": tflID,
+                            "longitude": lon,
+                            "latitude": lat,
+                            "edgesIncoming": edgesIncoming,
+                            "edgesOutgoing": edgesOutgoing,
+                            "state": state,
+                            "color": getTrafficLightColor(state[0])
+                        }
+                        await websocket.send_json({"trafficlight":tfl})
 
+                    await asyncio.sleep(0.01)
+                    
                     step += 1
                 except traci.TraCIException as e:
                     if "has no valid route" in str(e):
@@ -543,7 +617,6 @@ async def websocket_simulation(websocket: WebSocket):
                     "equivalent_trees_day": round(total_co2_kg / 0.06, 2) # Un árbol absorbe aprox 60g/día
                 }
             })
-
 
             # 1.1. Obtener emisiones por calle
             emisiones_por_calle = {}
@@ -567,7 +640,6 @@ async def websocket_simulation(websocket: WebSocket):
                 with open(emisiones_por_calle, 'r') as f:
                     # Leemos todo el contenido
                     contenido = f.read()
-                    
                     # Enviamos el contenido crudo al frontend
                     # (El frontend tendrá que parsear este XML)
                     await websocket.send_json({"emisiones_xml": contenido})
@@ -607,6 +679,9 @@ async def get_roads_websocket(websocket: WebSocket):
         return
     
     await websocket.send_json({"mensaje": "bbox recibido correctamente"})
+
+    bbox_str = websocket.query_params.get("mapa_")
+
     
     sumo_home = os.environ.get("SUMO_HOME")
 
@@ -633,14 +708,12 @@ async def get_roads_websocket(websocket: WebSocket):
                 "--output-file", net_file,
                 "--geometry.remove", "true",
                 "--junctions.join", "true",
-                # "--tls.guess-signals","true",
-                # "--tls.discard-simple","true",
-                # "--tls.join","true",
-                # "--tls.default-type","actuated",
                 "--proj.utm", "true",
                 "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
                 "--remove-edges.isolated", "true",
-                "--output.street-names", "true"
+                "--output.street-names", "true",
+                "--tls.guess","true",
+                "--tls.join", "true"
             ], check=True)  
             print("Red de SUMO generada correctamente")
             
@@ -690,7 +763,7 @@ async def get_roads_websocket(websocket: WebSocket):
             await websocket.send_json({"mensaje": "Descarga de carreteras finalizada correctamente👍"})
             
             # INSERCION DE SEMAFOROS
-            # Obtener todos los sistemas de semáforos de la red
+            # Obtener todas uniones de la red entre lanes
             for junction in net.getNodes():
                 idJunction =junction.getID()
                 # Obtener el polígono de la unión
@@ -716,10 +789,51 @@ async def get_roads_websocket(websocket: WebSocket):
                 }
                 
                 await websocket.send_json(feature)
-            await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍"})
-            
-            await websocket.close()
+            await websocket.send_json({"mensaje": "Descarga de uniones finalizada correctamente👍"})
 
+            # INSERCION DE SEMAFOROS
+            semaforos_detallados = []
+
+            for tls in net.getTrafficLights():
+                tls_id = tls.getID()
+                
+                # El TLS nos da las conexiones (el "puente" entre calles)
+                for connection in tls.getConnections():
+                    # connection[0] es el carril de entrada (Lane)
+                    lane_entrada = connection[0]
+                    link_index = connection[2] # Su posición en el código de luces (0, 1, 2...)
+                    
+                    # El semáforo físico está al final del carril
+                    shape = lane_entrada.getShape()
+                    punto_final = shape[-1] 
+                    
+                    lon, lat = net.convertXY2LonLat(punto_final[0], punto_final[1])
+                    
+                    # Calculamos la orientación para que en Cesium no miren a Cuenca
+                    # angulo = lane_entrada.getAngle(relativePos=-1)
+                    
+                    semaforos_detallados.append({
+                        "id": f"{tls_id}_{link_index}",
+                        "lon": lon,
+                        "lat": lat,
+                        # "heading": angulo
+                    })
+
+                    feature = {
+                        "type": "feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [lon, lat]
+                        },
+                        "properties": {
+                            "id": f"{tls_id}_{link_index}",
+                            "type": "trafficlight",
+                        }
+                    }
+                    await websocket.send_json(feature)
+            await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍 Nº:" + str(len(semaforos))})
+
+            await websocket.close()
         except Exception as e:
             await websocket.send_json({"mensaje": "Error en la descarga de carreteras: "+str(e)})
             await websocket.close()

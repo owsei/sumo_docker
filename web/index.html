@@ -24,10 +24,8 @@
     <div id="toolbar">
         <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
         <button onclick="getRoadsWebsocket()" class="btn btn-primary" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
-        <button onclick="getRoadsPamplona()" class="btn btn-primary" id="getRoadsPamplonaWebsocketBtn">Descargar carreteras Pamplona net</button>
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testConnectionProxy()" class="btn btn-primary" id="testConnectionProxyBtn">Test Connection Proxy</button>
-        
     </div>
     <div id="cesiumContainer"></div>
 
@@ -40,6 +38,10 @@
         <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" role="switch" id="toggle3DTiles">
             <label class="form-check-label" for="toggle3DTiles">3D Tiles</label>
+        </div>
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="zonaSnachoFuerte">
+            <label class="form-check-label" for="zonaSnachoFuerte">Zona Snacho Fuerte</label>
         </div>
         <button onclick="flyToA10()" class="btn btn-primary" id="flyToA10Btn">Volar a A10</button>
         <button onclick="flyToPamplona()" class="btn btn-primary" id="flyToPamplonaBtn">Volar a Pamplona</button>
@@ -106,7 +108,7 @@
         </div>
         
     </div>
-    <script src="./js/main.js"></script>
+    <script src="./js/sumo.js"></script>
     <script type="module">
 
         //Definicion de variables globales
@@ -114,6 +116,11 @@
         window.google=false;
         const pinBuilder = new Cesium.PinBuilder();
         window.layerFeaturesInMap=[];
+        window.zonaSnachoFuerte = 0;
+
+        // window.endPoint= "ws://owsei.ddns.net:8000/"
+        window.endPoint= "http://localhost:8000/"
+        // window.endPointDirecto="ws://localhost:8000/"
 
         // window.is3D = true;
         document.getElementById("cesiumContainer").style.display = "block";
@@ -160,7 +167,6 @@
                 });
                 console.log("Primer punto fijado");
                 document.getElementById('getRoadsWebsocketBtn').disabled = true;
-                document.getElementById('getRoadsPamplonaWebsocketBtn').disabled = true;
                 document.getElementById('simWebsocketBtn').disabled = true;
             } else {
                 // Segundo clic: finalizamos y calculamos el bounding box
@@ -196,9 +202,7 @@
                     }
                 });
 
-                // document.getElementById('getRoadsBtn').disabled = false;
                 document.getElementById('getRoadsWebsocketBtn').disabled = false;
-                document.getElementById('getRoadsPamplonaWebsocketBtn').disabled = false;
                 document.getElementById('simWebsocketBtn').disabled = false;
 
                 firstPoint = null; // Reiniciar para una nueva selección
@@ -208,13 +212,24 @@
             }
         }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
-
+        // 3DTiles checkbox
         document.getElementById('toggle3DTiles').addEventListener('change', function () {
             if (this.checked) {
                 mostrar3DTilesGoogle(); // Muestra el tileset
             } else if (window.googleTileset) {
                 googleTileset.show = false; // Oculta el tileset
                 window.viewer.scene.primitives.remove(googleTileset)
+            }
+        });
+
+        // Zona Snacho Fuerte checkbox
+        document.getElementById('zonaSnachoFuerte').addEventListener('change', function () {
+            if (this.checked) {
+                window.zonaSnachoFuerte = 1;
+                document.getElementById('simWebsocketBtn').disabled = false;
+            } else {
+                window.zonaSnachoFuerte = 0;
+                document.getElementById('simWebsocketBtn').disabled = true;
             }
         });
 
@@ -234,7 +249,6 @@
                 window.googleTileset.show = true;
             }
         }
-
 
         window.viewer.selectedEntityChanged.addEventListener(function(selectedEntity) {
             if (!selectedEntity.properties) return;
@@ -257,8 +271,6 @@
                 }, 1000);
             }
         });
-
-
 
         flyToPamplona()
 
