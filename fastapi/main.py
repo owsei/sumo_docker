@@ -303,9 +303,9 @@ async def websocket_simulation(websocket: WebSocket):
        sumo_home = "/usr/share/sumo"
     else:
         sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-
+    
     print("Ruta de SUMO encontrada correctamente", sumo_home,"Operative system",platform.system())
-    await websocket.send_json({"mensaje":"Ruta de SUMO encontrada correctamente"+ sumo_home +"|Operative system"+platform.system()})
+    await websocket.send_json({"mensaje":"Ruta de SUMO encontrada correctamente"+ sumo_home +"| Operative system:"+platform.system()})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print("Directorio temporal creado correctamente", tmpdir)
@@ -334,7 +334,12 @@ async def websocket_simulation(websocket: WebSocket):
 
 
         if zonaSnachoFuerte==1:
-            net_file = r"D:\Proyectos\SUMO_DOCKER\red_carreteras\zona-sancho-el-fuerte.net.xml"
+            if operativeSytemIsLinux==0:
+                net_file = "/tmp/zona-sancho-el-fuerte.net.xml"
+            else:
+                net_file = "D:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\zona-sancho-el-fuerte.net.xml"
+            
+            sumo_types = ",".join([f"highway.{t}" for t in ["motorway", "motorway_link","motorway_junction", "primary", "secondary", "tertiary", "residential", "living_street","trunk","trunk_link", "primary_link", "secondary_link", "tertiary_link","service","trafficlight"]])
             await websocket.send_json({"mensaje":"Red de sancho el fuerte descargada correctamente"})
         else:
             download_osm_data(bbox, osm_file)
@@ -345,10 +350,9 @@ async def websocket_simulation(websocket: WebSocket):
         
             # 2. Generar red de SUMO
             print("Generando red de SUMO")
-            await websocket.send_json({"mensaje":"Generando red de SUMO"})
+            await websocket.send_json({"mensaje":"Generando red de SUMO de OpenStreetMap"})
         
-
-        
+        if zonaSnachoFuerte==0:
             if operativeSytemIsLinux==0:
                 subprocess.run([
                     "netconvert",
@@ -386,58 +390,64 @@ async def websocket_simulation(websocket: WebSocket):
         await websocket.send_json({"mensaje":"Periodo de aparicion de vehiculos: "+ str(period)})
     
         random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
-        if operativeSytemIsLinux==0:
-            procesoTraffic=subprocess.run([
-                "python3", random_trips,
-                "-n", net_file,
-                "-r", route_file,
-                "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
-                "--period", str(period), # Aparece un coche cada 0.5 segundos
-                "--fringe-factor", "10"
-            ], check=True)  
+        if zonaSnachoFuerte==0:
+            if operativeSytemIsLinux==0:
+                procesoTraffic=subprocess.run([
+                    "python3", random_trips,
+                    "-n", net_file,
+                    "-r", route_file,
+                    "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
+                    "--period", str(period), # Aparece un coche cada 0.5 segundos
+                    "--fringe-factor", "10"
+                ], check=True)  
+            else:
+                procesoTraffic=subprocess.run([
+                    "python", random_trips,
+                    "-n", net_file,
+                    "-r", route_file,
+                    "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
+                    "--period", str(period), # Aparece un coche cada 0.5 segundos
+                    "--fringe-factor", "10"
+                ], check=True)  
+
+            print("Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos") 
+            await websocket.send_json({"mensaje":"Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos"})
+
+            # Primero crea el archivo de configuración SUMO
+            print("Creando archivo de configuración SUMO")
+            await websocket.send_json({"mensaje":"Creando archivo de configuración SUMO"})
+            
+            
+            config_file = os.path.join(tmpdir, "simulation.sumocfg")
+            print("Archivo de configuración SUMO creado correctamente", config_file)
+            await websocket.send_json({"mensaje":"Archivo de configuración SUMO creado correctamente"})
+            
+            # Crear el archivo .sumocfg
+            with open(config_file, 'w') as f:
+                f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
+                    <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.xsd">
+                        <input>
+                            <net-file value="{net_file}"/>
+                            <route-files value="{route_file}"/>
+                        </input>
+                        <time>
+                            <begin value="0"/>
+                            <end value="{str(duration_sec)}"/>
+                        </time>
+                        <routing>
+                            <device.rerouting.probability value="1.0"/>
+                            <device.rerouting.period value="10"/>
+                        </routing>
+                    </configuration>""")
+
+            
+
+            print("Archivos de configuración SUMO generados correctamente")
+
+        if zonaSnachoFuerte==0:
+            config_file = os.path.join(tmpdir, "simulation.sumocfg")
         else:
-            procesoTraffic=subprocess.run([
-                "python", random_trips,
-                "-n", net_file,
-                "-r", route_file,
-                "-e", str(duration_sec),  # Simular 3600 segundos de tráfico
-                "--period", str(period), # Aparece un coche cada 0.5 segundos
-                "--fringe-factor", "10"
-            ], check=True)  
-
-        print("Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos") 
-        await websocket.send_json({"mensaje":"Tráfico generado correctamente para "+ str(num_vehicles) + " vehiculos"})
-
-        # Primero crea el archivo de configuración SUMO
-        print("Creando archivo de configuración SUMO")
-        await websocket.send_json({"mensaje":"Creando archivo de configuración SUMO"})
-        
-        config_file = os.path.join(tmpdir, "simulation.sumocfg")
-        print("Archivo de configuración SUMO creado correctamente", config_file)
-        await websocket.send_json({"mensaje":"Archivo de configuración SUMO creado correctamente"})
-        
-        # Crear el archivo .sumocfg
-        with open(config_file, 'w') as f:
-            f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
-                <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.xsd">
-                    <input>
-                        <net-file value="{net_file}"/>
-                        <route-files value="{route_file}"/>
-                    </input>
-                    <time>
-                        <begin value="0"/>
-                        <end value="{str(duration_sec)}"/>
-                    </time>
-                    <routing>
-                        <device.rerouting.probability value="1.0"/>
-                        <device.rerouting.period value="10"/>
-                    </routing>
-                </configuration>""")
-
-        
-
-        print("Archivos de configuración SUMO generados correctamente")
-
+            config_file = os.path.join("D:\\Proyectos\\SUMO_DOCKER\\red_carreteras", "sancho-el-fuerte.sumocfg")
         # 4. Iniciar simulación con TraCI
         try:
             traciBinary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
@@ -453,12 +463,12 @@ async def websocket_simulation(websocket: WebSocket):
                 "--device.rerouting.period", "1",        # Recalcular en cuanto cambie algo
                 "--device.rerouting.pre-period", "0",
                 "--ignore-route-errors", "true",          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
-                "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
-                "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
-                "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
-                "--emission-output", "emisiones_por_calle.xml",   #muestra informacion al final de la simulacion
-                "--emission-output.step-scaled", "true",
-                "--no-step-log", "true"
+                # "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
+                # "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
+                # "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
+                # "--emission-output", "emisiones_por_calle.xml",   #muestra informacion al final de la simulacion
+                # "--emission-output.step-scaled", "true",
+                # "--no-step-log", "true"
             ])
             
             # CALLES
@@ -584,12 +594,13 @@ async def websocket_simulation(websocket: WebSocket):
                     lista_semaforos = traci.trafficlight.getIDList()
                     # # Semaforos
                     for tflID in traci.trafficlight.getIDList():
-                        position = traci.junction.getPosition(tflID)
-                        duration = traci.trafficlight.getPhaseDuration(tflID)
-                        program = traci.trafficlight.getProgram(tflID)
-                        links = traci.trafficlight.getControlledLinks(tflID)
-                        lanes = traci.trafficlight.getControlledLanes(tflID)
-
+                        position=None
+                        if tflID.startswith("GS_"):
+                            position = traci.junction.getPosition(tflID[3:len(tflID)])
+                        else:
+                            position = traci.junction.getPosition(tflID)
+                        
+                        # programs = traci.trafficlight.getAllProgramLogics(tflID)
                         lon, lat = traci.simulation.convertGeo(position[0], position[1])
                         state=traci.trafficlight.getRedYellowGreenState(tflID)
 
@@ -599,10 +610,7 @@ async def websocket_simulation(websocket: WebSocket):
                             "latitude": lat,
                             "state": state,
                             "color": getTrafficLightColor(state[0]),
-                            "duration": duration,
-                            "program": program,
-                            "links": links,
-                            "lanes": lanes  
+                            # "programs": programs
                         }
                         await websocket.send_json({"trafficlight":tfl})
 

@@ -1,0 +1,1 @@
+python "C:\Users\Pedro\Desktop\sumo-win64extra-1.26.0\sumo-1.26.0\tools\randomTrips.py" -n zona-sancho-el-fuerte.net.xml -r zona-sancho-el-fuerte.rou.xml -e 3600 --period 3 --fringe-factor 10

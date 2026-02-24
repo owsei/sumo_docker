@@ -461,8 +461,16 @@
                                 pixelSize: 10,
                                 color: Cesium.Color.fromCssColorString(data.color)
                             },
+                            model: {
+                                uri: "../3dobjects/trafficlight_red.glb", // Ruta a tu carpeta
+                                minimumPixelSize: 70,          // Para que no desaparezca al alejarse
+                                scale: 70.0,                  // Ajusta según el tamaño de tu .glb
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                clampToGround: true,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY, 
+                            },
                             label: { 
-                                text: data.id, 
+                                text: data.id+"\n"+data.color, 
                                 font: '10pt sans-serif',
                                 fillColor: Cesium.Color.WHITE,
                                 outlineColor: Cesium.Color.BLACK,
@@ -473,6 +481,13 @@
                         });
                     } else {
                         // Actualizar posición y rotación en tiempo real
+                        if (data.color == "red"){
+                            window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_red.glb";
+                        }else if (data.color == "yellow"){
+                            window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_yellow.glb";
+                        }else if (data.color == "green"){
+                            window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_green.glb";
+                        }
                         window.viewer.entities.getById(data.id).point.color.setValue(Cesium.Color.fromCssColorString(data.color));
                     }
                 }   
