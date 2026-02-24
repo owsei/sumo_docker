@@ -287,13 +287,14 @@ async def websocket_simulation(websocket: WebSocket):
     forbiddenRoads = unquote(forbiddenRoads)
     forbiddenRoadsArray = json.loads(forbiddenRoads)
 
-    if not bbox_str and zonaSnachoFuerte==0:
-        raise HTTPException(status_code=400, detail="Missing bbox parameter")
-    else:
-        try:
-            bbox = BoundingBox(**json.loads(bbox_str))
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid bbox format")
+    if zonaSnachoFuerte==0: 
+        if not bbox_str:
+            raise HTTPException(status_code=400, detail="Missing bbox parameter")
+        else:
+            try:
+                bbox = BoundingBox(**json.loads(bbox_str))
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid bbox format")
     
    
     #DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
@@ -333,7 +334,7 @@ async def websocket_simulation(websocket: WebSocket):
 
 
         if zonaSnachoFuerte==1:
-            net_file = os.path.join(tmpdir, "zona-sancho-el-fuerte.net.xml")
+            net_file = r"D:\Proyectos\SUMO_DOCKER\red_carreteras\zona-sancho-el-fuerte.net.xml"
             await websocket.send_json({"mensaje":"Red de sancho el fuerte descargada correctamente"})
         else:
             download_osm_data(bbox, osm_file)
@@ -580,21 +581,28 @@ async def websocket_simulation(websocket: WebSocket):
                     await asyncio.sleep(0.01)
                     # INSERCION DE SEMAFOROS
                     
+                    lista_semaforos = traci.trafficlight.getIDList()
                     # # Semaforos
                     for tflID in traci.trafficlight.getIDList():
                         position = traci.junction.getPosition(tflID)
+                        duration = traci.trafficlight.getPhaseDuration(tflID)
+                        program = traci.trafficlight.getProgram(tflID)
+                        links = traci.trafficlight.getControlledLinks(tflID)
+                        lanes = traci.trafficlight.getControlledLanes(tflID)
+
                         lon, lat = traci.simulation.convertGeo(position[0], position[1])
-                        edgesIncoming = traci.junction.getIncomingEdges(tflID)
-                        edgesOutgoing = traci.junction.getOutgoingEdges(tflID)
                         state=traci.trafficlight.getRedYellowGreenState(tflID)
+
                         tfl ={
                             "id": tflID,
                             "longitude": lon,
                             "latitude": lat,
-                            "edgesIncoming": edgesIncoming,
-                            "edgesOutgoing": edgesOutgoing,
                             "state": state,
-                            "color": getTrafficLightColor(state[0])
+                            "color": getTrafficLightColor(state[0]),
+                            "duration": duration,
+                            "program": program,
+                            "links": links,
+                            "lanes": lanes  
                         }
                         await websocket.send_json({"trafficlight":tfl})
 

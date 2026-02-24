@@ -444,10 +444,6 @@
                     return;
                 }
                 
-                if (data.semaforos){
-                    document.getElementById('messages-websocket').innerHTML += data.semaforos + "<br/>";
-                    return;
-                }
 
                 if (data.trafficlight){
                     data = data.trafficlight;
@@ -477,12 +473,7 @@
                         });
                     } else {
                         // Actualizar posición y rotación en tiempo real
-                        entidadSemaforo = window.viewer.entities.getById(data.id);
-                        colorActual=entidadSemaforo.point.color;
-                        colorNuevo = Cesium.Color.fromCssColorString(data.color);
-                        if (colorActual != colorNuevo){
-                            entidadSemaforo.point.color = colorNuevo;
-                        }
+                        window.viewer.entities.getById(data.id).point.color.setValue(Cesium.Color.fromCssColorString(data.color));
                     }
                 }   
 
