@@ -9,5 +9,9 @@
         <net-file value="zona-sancho-el-fuerte.net.xml"/>
         <route-files value="zona-sancho-el-fuerte.rou.xml"/>
     </input>
+    <routing>
+        <device.rerouting.probability value="1.0"/>
+        <device.rerouting.period value="10"/>
+    </routing>
 
 </sumoConfiguration>

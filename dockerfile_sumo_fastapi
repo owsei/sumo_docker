@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y \
 
 # COPY ./red_carreteras/pamplona_v1.net.xml /tmp/pamplona_v1.net.xml
 COPY ./red_carreteras/zona-sancho-el-fuerte.net.xml /tmp/zona-sancho-el-fuerte.net.xml
+COPY ./red_carreteras/sancho-el-fuerte.sumocfg /tmp/sancho-el-fuerte.sumocfg
+COPY ./red_carreteras/zona-sancho-el-fuerte.rou.xml /tmp/zona-sancho-el-fuerte.rou.xml
 COPY ./ficheros_adicionales/tipos_vehiculos.add.xml /tmp/tipos_vehiculos.add.xml
 
 RUN echo "Instalando Fastapi"

@@ -7,7 +7,7 @@
         "request": "launch",
         "module": "uvicorn",
         "cwd": "${workspaceFolder}\\fastapi",
-        "args": ["main:app", "--reload"],
+        "args": ["main:app", "--reload" ,"--port", "8001"],
         "jinja": false,
         "justMyCode": true
         }

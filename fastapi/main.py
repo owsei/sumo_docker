@@ -443,11 +443,12 @@ async def websocket_simulation(websocket: WebSocket):
             
 
             print("Archivos de configuración SUMO generados correctamente")
-
-        if zonaSnachoFuerte==0:
             config_file = os.path.join(tmpdir, "simulation.sumocfg")
-        else:
-            config_file = os.path.join("D:\\Proyectos\\SUMO_DOCKER\\red_carreteras", "sancho-el-fuerte.sumocfg")
+        if zonaSnachoFuerte==1:
+            if operativeSytemIsLinux==1:
+                config_file = os.path.join("D:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\sancho-el-fuerte.sumocfg")
+            else:
+                config_file = os.path.join("/tmp/sancho-el-fuerte.sumocfg")
         # 4. Iniciar simulación con TraCI
         try:
             traciBinary = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
