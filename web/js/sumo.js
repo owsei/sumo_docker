@@ -76,6 +76,7 @@
         }
 
         function injectFlow(){
+            window.numberOfCars = document.getElementById("numberOfCars").value
             const comando = {
                 action: "insert_flow",
                 origin: window.selectedOrigin,
@@ -84,7 +85,7 @@
             };
             
             socket.send(JSON.stringify(comando));
-            console.log("Enviando petición de inyección para:", idVehicle);
+            console.log("Enviando petición de inyección para:"+ window.numberOfCars+" coches.");
         }
 
         function closeEdgeWebsocket(idEdge) {
@@ -142,6 +143,18 @@
             if (simulacionIniciada){
                 openEdgeWebsocket(idEdge);
             }
+        }
+
+        function setOriginFlow(idEdge,nombreCalle){
+            window.selectedOrigin=idEdge;
+            window.selectedOriginName=nombreCalle;
+            document.getElementById('originFlow').innerHTML = idEdge+"-"+nombreCalle;
+        }
+
+        function setDestinationFlow(idEdge,nombreCalle){
+            window.selectedDestination=idEdge;
+            window.selectedDestinationName=nombreCalle;
+            document.getElementById('destinationFlow').innerHTML = idEdge + "-" + nombreCalle;
         }
 
         function getVelocityStyle(velocity) {
@@ -218,6 +231,7 @@
             window.viewer.entities.add({
             properties: {
                 id: datosLineString.properties.id,
+                edgeID:datosLineString.properties.edgeID,
                 velocidad_max: datosLineString.properties.velocidad_max,
                 nombre: datosLineString.properties.nombre,
                 carriles: datosLineString.properties.carriles,
@@ -255,6 +269,12 @@
                             </button>
                             <button id="habilitar_${datosLineString.properties.id}" class="cesium-button">
                                 Habilitar 👍
+                            </button>
+                            <button id="origen_${datosLineString.properties.edgeID}" class="cesium-button">
+                                Origen 🚩
+                            </button>
+                            <button id="destino_${datosLineString.properties.edgeID}" class="cesium-button">
+                                Destino 🏁
                             </button>
                         </div>
                     `,

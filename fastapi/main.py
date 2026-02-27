@@ -392,7 +392,6 @@ async def websocket_simulation(websocket: WebSocket):
                         <input>
                             <net-file value="{net_file}"/>
                             <route-files value="{route_file}"/>
-                            <additional-files value="{type_vehicles_file}"/>
                         </input>
                         <time>
                             <begin value="0"/>
@@ -485,13 +484,16 @@ async def websocket_simulation(websocket: WebSocket):
                         data = await asyncio.wait_for(websocket.receive_json(), timeout=0.01)
 
                         if (data.get("action")=="insert_flow"):
-                            numberOfCars=data.get("numberOfCars")
-                            route_calculada = findRoute(traci,data.get("origen"),data.get("destino"))
-                            route_id = "route_" + uuid.uuid4()
+                            numberOfCars=int(data.get("numberOfCars"))
+                            route_calculada = findRoute(traci,data.get("origin"),data.get("destination"))
+                            uuid_str=str(uuid.uuid4().int)
+                            route_id = "route_" + uuid_str
                             i=0
                             while i<numberOfCars:
-                                traci.route.add(route_id, ruta_calculada.edges)
-                                print(f"Vehículo {veh_id} in route {route_id} inyectado de {ORIGEN} a {DESTINO}")
+                                traci.route.add(route_id, route_calculada.edges)
+                                print(f"Creada ruta {route_id} de {data.get("origin")} a {data.get("destination")}")
+                                traci.vehicle.add(uuid_str,route_id)
+                                print(f"Vehículo {uuid_str} insertador en ruta {route_id}")
                                 
                                 
                         if data.get("action") == "close_edge":
@@ -828,7 +830,7 @@ async def get_roads_websocket(websocket: WebSocket):
                         }
                     }
                     await websocket.send_json(feature)
-            await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍 Nº:" + str(len(semaforos))})
+            await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍 Nº:" + str(len(semaforos_detallados))})
 
             await websocket.close()
         except Exception as e:

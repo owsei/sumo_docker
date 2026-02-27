@@ -63,14 +63,10 @@
                 <div id="flush-collapseInyectorFlujo" class="accordion-collapse collapse" aria-labelledby="flush-headingOne" data-bs-parent="#accordionFlushExample">
                     <div class="messages-websocket">
                         <label>Nº de Vehículos:</label>
-                        <input type="number" id="flow-quantity" value="10" min="1">
-                        
-                        <div id="display-origin" class="id-display">Ninguno seleccionado</div>
-                        <button id="btn-select-destination" class="pick-btn btn btn-primary btn-sm" onclick="setSelectMode('destination')">
-                            🏁 Seleccionar Destino
-                        </button>
-                        <div id="display-destination" class="id-display">Ninguno seleccionado</div>
-                        <button id="btnLaunchFlow" class="btn btn-primary btn-sm" onclick="lanzarFlujo()">Lanzar Flujo</button>
+                        <input type="number" id="numberOfCars" value="10" min="1">
+                        <div id="originFlow" class="id-display">Ninguno seleccionado</div>
+                        <div id="destinationFlow" class="id-display">Ninguno seleccionado</div>
+                        <button id="btnLaunchFlow" class="btn btn-primary btn-sm" onclick="injectFlow()">Lanzar Flujo</button>
                         <div id="flow-status" class="status-msg"></div>
                     </div>
                 </div>
@@ -278,11 +274,12 @@
         }
 
         window.viewer.selectedEntityChanged.addEventListener(function(selectedEntity) {
-            if (!selectedEntity.properties) return;
-            var entityId = selectedEntity.properties.id.getValue();
+            if (!selectedEntity || !selectedEntity.properties) return;
+            let entityId = selectedEntity.properties.id.getValue();
+            let edgeID = selectedEntity.properties.edgeID.getValue();
             // var entityProhibida = selectedEntity.properties.prohibida.getValue();
-            var entityVelocidadMax = selectedEntity.properties.velocidad_max.getValue();
-            var entityStreetName = selectedEntity.properties.nombre.getValue();
+            let entityVelocidadMax = selectedEntity.properties.velocidad_max.getValue();
+            let entityStreetName = selectedEntity.properties.nombre.getValue();
 
             if (selectedEntity) {
                 setTimeout(function() {
@@ -302,6 +299,20 @@
                             enableForbiddenRoad(entityId,entityStreetName);
                             let colorRoad=getVelocityStyle(entityVelocidadMax);
                             entity.polyline.material = colorRoad
+                        });
+                    }
+                    var origen_button = window.viewer.infoBox.frame.contentDocument.getElementById("origen_"+ edgeID);
+                    if (origen_button) {
+                        var entity = window.viewer.selectedEntity;
+                        origen_button.addEventListener('click', function() {
+                            setOriginFlow(edgeID,entityStreetName);
+                        });
+                    }
+                    var destino_button = window.viewer.infoBox.frame.contentDocument.getElementById("destino_"+ edgeID);
+                    if (destino_button) {
+                        var entity = window.viewer.selectedEntity;
+                        destino_button.addEventListener('click', function() {
+                            setDestinationFlow(edgeID,entityStreetName);
                         });
                     }
                 }, 1000);
