@@ -481,19 +481,22 @@ async def websocket_simulation(websocket: WebSocket):
 
                     try:
                         # Intentamos leer un mensaje sin bloquear la simulación (timeout corto)
-                        data = await asyncio.wait_for(websocket.receive_json(), timeout=0.01)
+                        data = await asyncio.wait_for(websocket.receive_json(), timeout=0.02)
 
                         if (data.get("action")=="insert_flow"):
                             numberOfCars=int(data.get("numberOfCars"))
                             route_calculada = findRoute(traci,data.get("origin"),data.get("destination"))
                             uuid_str=str(uuid.uuid4().int)
                             route_id = "route_" + uuid_str
+                            traci.route.add(route_id, route_calculada.edges)
+                            print(f"Creada ruta {route_id} de {data.get("origin")} a {data.get("destination")}")
                             i=0
                             while i<numberOfCars:
-                                traci.route.add(route_id, route_calculada.edges)
-                                print(f"Creada ruta {route_id} de {data.get("origin")} a {data.get("destination")}")
-                                traci.vehicle.add(uuid_str,route_id)
-                                print(f"Vehículo {uuid_str} insertador en ruta {route_id}")
+                                uuid_vehicle=str(uuid.uuid4().int)
+                                traci.vehicle.add(uuid_vehicle,route_id)
+                                print(f"Vehículo {uuid_vehicle} insertador en ruta {route_id}")
+                                i+=1
+                            
                                 
                                 
                         if data.get("action") == "close_edge":
