@@ -27,6 +27,7 @@
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testConnectionProxy()" class="btn btn-primary" id="testConnectionProxyBtn">Test Connection Proxy</button>
     </div>
+
     <div id="cesiumContainer"></div>
 
     <div id="spinnerOverlay" class="spinner-overlay">
@@ -50,8 +51,30 @@
         <input type="number" id="num_vehicles" value=1000>
         <text id="duration_sec_text">Duración de la simulación: </text>
         <input type="number" id="duration_sec" value=3600>
+        
 
         <div class="accordion accordion-flush" id="accordionFlushExample">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="flush-headingOne">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseInyectorFlujo" aria-expanded="false" aria-controls="flush-collapseInyectorFlujo">
+                   🚗 Inyector de Flujo
+                </button>
+                </h2>
+                <div id="flush-collapseInyectorFlujo" class="accordion-collapse collapse" aria-labelledby="flush-headingOne" data-bs-parent="#accordionFlushExample">
+                    <div class="messages-websocket">
+                        <label>Nº de Vehículos:</label>
+                        <input type="number" id="flow-quantity" value="10" min="1">
+                        
+                        <div id="display-origin" class="id-display">Ninguno seleccionado</div>
+                        <button id="btn-select-destination" class="pick-btn btn btn-primary btn-sm" onclick="setSelectMode('destination')">
+                            🏁 Seleccionar Destino
+                        </button>
+                        <div id="display-destination" class="id-display">Ninguno seleccionado</div>
+                        <button id="btnLaunchFlow" class="btn btn-primary btn-sm" onclick="lanzarFlujo()">Lanzar Flujo</button>
+                        <div id="flow-status" class="status-msg"></div>
+                    </div>
+                </div>
+            </div>
             <div class="accordion-item">
                 <h2 class="accordion-header" id="flush-headingOne">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseOne" aria-expanded="false" aria-controls="flush-collapseOne">
@@ -118,6 +141,10 @@
         window.layerFeaturesInMap=[];
         window.zonaSnachoFuerte = 0;
 
+        window.selectionMode = null; // Puede ser 'origin', 'destination' o null
+        window.selectedOrigin = null;
+        window.selectedDestination = null;
+
         // window.endPoint= "ws://owsei.ddns.net:8000/"
         window.endPoint= "http://localhost:8001/"
         // window.endPointDirecto="ws://localhost:8000/"
@@ -139,7 +166,7 @@
             navigationInstructionsInitiallyVisible: true,
             requestRenderMode: true,
             maximumRenderTimeChange: Infinity,
-            geocoder: Cesium.IonGeocodeProviderType.GOOGLE,
+            geocoderProvider: Cesium.IonGeocodeProviderType.GOOGLE,
             }),
         });
         window.viewer.scene.globe.enableLighting = true;
@@ -259,13 +286,22 @@
 
             if (selectedEntity) {
                 setTimeout(function() {
-                    var button = window.viewer.infoBox.frame.contentDocument.getElementById(entityId);
-                    if (button) {
+                    var prohibir_button = window.viewer.infoBox.frame.contentDocument.getElementById("prohibir_"+ entityId);
+                    if (prohibir_button) {
                         var entity = window.viewer.selectedEntity;
-                        button.addEventListener('click', function() {
+                        prohibir_button.addEventListener('click', function() {
                             setForbiddenRoads(entityId,entityStreetName);
                             // entity.polyline.material = Cesium.Color.RED;
                             entity.polyline.material = new Cesium.ColorMaterialProperty(Cesium.Color.RED);
+                        });
+                    }
+                    var habilitar_button = window.viewer.infoBox.frame.contentDocument.getElementById("habilitar_"+ entityId);
+                    if (habilitar_button) {
+                        var entity = window.viewer.selectedEntity;
+                        habilitar_button.addEventListener('click', function() {
+                            enableForbiddenRoad(entityId,entityStreetName);
+                            let colorRoad=getVelocityStyle(entityVelocidadMax);
+                            entity.polyline.material = colorRoad
                         });
                     }
                 }, 1000);

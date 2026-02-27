@@ -75,6 +75,18 @@
             document.getElementById('spinnerOverlay').style.display = 'none';
         }
 
+        function injectFlow(){
+            const comando = {
+                action: "insert_flow",
+                origin: window.selectedOrigin,
+                destination: window.selectedDestination,
+                numberOfCars: window.numberOfCars
+            };
+            
+            socket.send(JSON.stringify(comando));
+            console.log("Enviando petición de inyección para:", idVehicle);
+        }
+
         function closeEdgeWebsocket(idEdge) {
             const comando = {
                 action: "close_edge",
@@ -90,7 +102,7 @@
             forbiddenRoadsArray.push({id:idRoad,nombreCalle:nameRoad});
             htmlForbbidenRoads=''
             forbiddenRoadsArray.forEach(element => {
-                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element.id} <button onclick="enableForbiddenRoad('${element.nombreCalle}','${element.id}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
+                htmlForbbidenRoads+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element.id} <button onclick="enableForbiddenRoad('${element.id}','${element.nombreCalle}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
             });
             document.getElementById('forbiddenRoads').innerHTML = htmlForbbidenRoads;
 
@@ -114,11 +126,11 @@
             return arr.filter(item => item.id !== value.id);
         }
 
-        function enableForbiddenRoad(nombreCalle,idEdge){
+        function enableForbiddenRoad(idEdge,nombreCalle){
             forbiddenRoadsArray = removeItemOnce(forbiddenRoadsArray, {id:idEdge,nombreCalle:nombreCalle});
             document.getElementById('forbiddenRoads').innerHTML = '';
             forbiddenRoadsArray.forEach(element => {
-                document.getElementById('forbiddenRoads').innerHTML+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element} <button onclick="enableForbiddenRoad('${element.nombreCalle}','${element.id}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
+                document.getElementById('forbiddenRoads').innerHTML+=`<div class="alert alert-danger" role="alert">${element.nombreCalle} - ${element} <button onclick="enableForbiddenRoad('${element.id}','${element.nombreCalle}')" class="btn btn-primary" id="enableForbiddenRoadBtn">Habilitar👍</button></div>`;
             });
             
             let entidad = window.viewer.entities.values.filter(e => e.properties && e.properties.id && e.properties.id.getValue() === idEdge);
@@ -170,10 +182,12 @@
                                             <td class="tdproper"> ${value}</td>
                                         </tr>`;
                 }
-                
             }
-            descrip = descrip + `<tr><td> <button id="${properties.id}" class="cesium-button">
+            descrip = descrip + `<tr><td> <button id="prohibir${properties.id}" class="cesium-button">
                                 Prohibir ⛔
+                            </button></td></tr>`;
+             descrip = descrip + `<tr><td> <button id="habilitar${properties.id}" class="cesium-button">
+                                Habilitar 👍
                             </button></td></tr>`;
             descrip = descrip + '</table>';
 
@@ -236,8 +250,11 @@
                             <p>Origen: ${datosLineString.properties.origen}</p>
                             <p>Destino: ${datosLineString.properties.destino}</p>
                             <p>Prioridad: ${datosLineString.properties.prioridad}</p>
-                            <button id="${datosLineString.properties.id}" class="cesium-button">
+                            <button id="prohibir_${datosLineString.properties.id}" class="cesium-button">
                                 Prohibir ⛔
+                            </button>
+                            <button id="habilitar_${datosLineString.properties.id}" class="cesium-button">
+                                Habilitar 👍
                             </button>
                         </div>
                     `,
@@ -459,16 +476,19 @@
                             description: createPropertiesPanel(data),
                             point: {
                                 pixelSize: 10,
-                                color: Cesium.Color.fromCssColorString(data.color)
-                            },
-                            model: {
-                                uri: "../3dobjects/trafficlight_red.glb", // Ruta a tu carpeta
-                                minimumPixelSize: 70,          // Para que no desaparezca al alejarse
-                                scale: 70.0,                  // Ajusta según el tamaño de tu .glb
+                                color: Cesium.Color.fromCssColorString(data.color),
                                 heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
                                 clampToGround: true,
                                 disableDepthTestDistance: Number.POSITIVE_INFINITY, 
                             },
+                            // model: {
+                            //     uri: "../3dobjects/trafficlight_red.glb", // Ruta a tu carpeta
+                            //     minimumPixelSize: 60,          // Para que no desaparezca al alejarse
+                            //     scale: 60.0,                  // Ajusta según el tamaño de tu .glb
+                            //     heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                            //     clampToGround: true,
+                            //     disableDepthTestDistance: Number.POSITIVE_INFINITY, 
+                            // },
                             label: { 
                                 text: data.id+"\n"+data.color, 
                                 font: '10pt sans-serif',
@@ -481,13 +501,13 @@
                         });
                     } else {
                         // Actualizar posición y rotación en tiempo real
-                        if (data.color == "red"){
-                            window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_red.glb";
-                        }else if (data.color == "yellow"){
-                            window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_yellow.glb";
-                        }else if (data.color == "green"){
-                            window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_green.glb";
-                        }
+                        // if (data.color == "red"){
+                        //     window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_red.glb";
+                        // }else if (data.color == "yellow"){
+                        //     window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_yellow.glb";
+                        // }else if (data.color == "green"){
+                        //     window.viewer.entities.getById(data.id).model.uri = "../3dobjects/trafficlight_green.glb";
+                        // }
                         window.viewer.entities.getById(data.id).point.color.setValue(Cesium.Color.fromCssColorString(data.color));
                     }
                 }   

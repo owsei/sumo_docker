@@ -138,7 +138,8 @@ def convert_net_to_geojson_net(net_file):
         "features": features
     }
 
-
+def findRoute(traci,origen,destino):
+    return traci.simulation.findRoute(origen, destino)
 
 def getVelocityStyle(velocity):
 
@@ -156,46 +157,6 @@ def getVelocityStyle(velocity):
         return "white"
     else:
         return "gray"
-
-async def sendCreateRoads(net_file):
-    net = sumolib.net.readNet(net_file)
-    for edge in net.getEdges():
-        # Obtenemos la geometría (forma) de la carretera
-        # Convertimos las coordenadas internas de SUMO a Lon/Lat
-        shape = edge.getShape()
-        coords = [net.convertXY2LonLat(x, y) for x, y in shape]
-
-        # Extraemos las propiedades que queremos
-        # Nota: edge.getName() devuelve el nombre de la calle de OSM
-        properties = {
-            "id": edge.getID(),
-            "nombre": edge.getName() or "Calle sin nombre",
-            "tipo": edge.getType(),
-            "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
-            "carriles": edge.getLaneNumber(),
-            
-        }
-
-        feature = {
-            "type": "Feature",
-            "geometry": {
-                "type": "LineString",
-                "coordinates": coords
-            },
-            "properties": properties
-        }
-        await websocket.send_json(feature)
-
-def calcular_heading_preciso(lat1, lon1, lat2, lon2):
-    geod = Geod(ellps="WGS84")
-    # fwd_azimuth es el ángulo hacia adelante (azimut)
-    # inv_azimuth es el ángulo de regreso
-    fwd_azimuth, inv_azimuth, distance = geod.inv(lon1, lat1, lon2, lat2)
-    
-    # pyproj devuelve grados de -180 a 180. 
-    # Cesium prefiere radianes.
-    heading_rad = math.radians((fwd_azimuth + 360) % 360)
-    return heading_rad 
 
 def getTrafficLightColor(state):
     match state:
@@ -315,6 +276,8 @@ async def websocket_simulation(websocket: WebSocket):
         print("Archivo NET creado correctamente", net_file)
         route_file = os.path.join(tmpdir, "mapa.rou.xml")
         print("Archivo ROUT creado correctamente", route_file)
+        type_vehicles_file=os.path.join(tmpdir,"tipos_vehiculos.add.xml")
+        print("Tipos de vehiculos", type_vehicles_file)
 
         # tipos_vehiculos = os.path.join(tmpdir, "tipos_vehiculos.add.xml")
         # print("Archivo tipos_vehiculos creado correctamente", tipos_vehiculos)
@@ -429,11 +392,15 @@ async def websocket_simulation(websocket: WebSocket):
                         <input>
                             <net-file value="{net_file}"/>
                             <route-files value="{route_file}"/>
+                            <additional-files value="{type_vehicles_file}"/>
                         </input>
                         <time>
                             <begin value="0"/>
                             <end value="{str(duration_sec)}"/>
                         </time>
+                        <output>
+                            <tripinfo-output value="tripinfos.xml"/>
+                        </output>
                         <routing>
                             <device.rerouting.probability value="1.0"/>
                             <device.rerouting.period value="10"/>
@@ -467,10 +434,13 @@ async def websocket_simulation(websocket: WebSocket):
                 # "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
                 # "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
                 # "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
-                # "--emission-output", "emisiones_por_calle.xml",   #muestra informacion al final de la simulacion
-                # "--emission-output.step-scaled", "true",
+                "--emission-output.geo","true",
+                "--emission-output", "emisiones_por_calle.xml",   #muestra informacion al final de la simulacion
+                "--emission-output.step-scaled", "true",
                 # "--no-step-log", "true"
             ])
+            
+
             
             # CALLES
             edges=traci.edge.getIDList()
@@ -513,7 +483,17 @@ async def websocket_simulation(websocket: WebSocket):
                     try:
                         # Intentamos leer un mensaje sin bloquear la simulación (timeout corto)
                         data = await asyncio.wait_for(websocket.receive_json(), timeout=0.01)
-                        
+
+                        if (data.get("action")=="insert_flow"):
+                            numberOfCars=data.get("numberOfCars")
+                            route_calculada = findRoute(traci,data.get("origen"),data.get("destino"))
+                            route_id = "route_" + uuid.uuid4()
+                            i=0
+                            while i<numberOfCars:
+                                traci.route.add(route_id, ruta_calculada.edges)
+                                print(f"Vehículo {veh_id} in route {route_id} inyectado de {ORIGEN} a {DESTINO}")
+                                
+                                
                         if data.get("action") == "close_edge":
                             edge_id = data.get("edge_id")
                             await websocket.send_json({"calle_cerrada":"Cerrando calle " + edge_id})
