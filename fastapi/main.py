@@ -485,20 +485,22 @@ async def websocket_simulation(websocket: WebSocket):
 
                         if (data.get("action")=="insert_flow"):
                             numberOfCars=int(data.get("numberOfCars"))
+                            origin=data.get("origin")
+                            destination = data.get("destination")
                             route_calculada = findRoute(traci,data.get("origin"),data.get("destination"))
                             uuid_str=str(uuid.uuid4().int)
                             route_id = "route_" + uuid_str
                             traci.route.add(route_id, route_calculada.edges)
-                            print(f"Creada ruta {route_id} de {data.get("origin")} a {data.get("destination")}")
+                            print(f"Creada ruta {route_id} de {origin} a {destination}")
                             i=0
                             while i<numberOfCars:
                                 uuid_vehicle=str(uuid.uuid4().int)
                                 traci.vehicle.add(uuid_vehicle,route_id)
+                                traci.vehicle.rerouteTraveltime(uuid_vehicle)
                                 print(f"Vehículo {uuid_vehicle} insertador en ruta {route_id}")
+                                await websocket.send_json({"vehicle_inyect":"Vehículo "+uuid_vehicle +" insertado en ruta "+ route_id})
                                 i+=1
                             
-                                
-                                
                         if data.get("action") == "close_edge":
                             edge_id = data.get("edge_id")
                             await websocket.send_json({"calle_cerrada":"Cerrando calle " + edge_id})
@@ -506,7 +508,7 @@ async def websocket_simulation(websocket: WebSocket):
                                 # Lógica de cierre en SUMO
                                 # traci.edge.setAllowed(edge_id, [])  # Prohibir paso
                                 # traci.edge.setEffort(edge_id, 999999) # Avisar al GPS
-                            
+                                
                                 traci.lane.setAllowed(edge_id, ["all"])  
                                 traci.lane.setMaxSpeed(edge_id, 0.1)
                             
