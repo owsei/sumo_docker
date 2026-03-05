@@ -430,13 +430,14 @@ async def websocket_simulation(websocket: WebSocket):
                 "--device.rerouting.period", "1",        # Recalcular en cuanto cambie algo
                 "--device.rerouting.pre-period", "0",
                 "--ignore-route-errors", "true",          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
-                # "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
-                # "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
+                "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
+                "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
                 # "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
                 "--emission-output.geo","true",
-                "--emission-output", "emisiones_por_calle.xml",   #muestra informacion al final de la simulacion
+                "--emission-output", "emissions.xml",   #muestra informacion al final de la simulacion
                 "--emission-output.step-scaled", "true",
                 # "--no-step-log", "true"
+                "--summary-output", "summary.xml",
             ])
             
 
@@ -550,7 +551,13 @@ async def websocket_simulation(websocket: WebSocket):
                         # No hay mensajes nuevos, seguimos la simulación
                         pass
 
-                    
+                    # Esto hace que los vehiculos que han terminado la ruta desaparezcan
+                    for vehicleID in traci.simulation.getArrivedIDList():
+                        vehiculo={
+                            "id": vehicleID
+                        }
+                        await websocket.send_json({"vehiculo_finalizado":vehiculo})
+
                     vehicles_at_step = []
                     for veh in traci.vehicle.getIDList():
                         traci.vehicle.rerouteTraveltime(veh)
@@ -605,6 +612,7 @@ async def websocket_simulation(websocket: WebSocket):
                     await asyncio.sleep(0.01)
                     
                     step += 1
+                    await websocket.send_json({"step": step})
                 except traci.TraCIException as e:
                     if "has no valid route" in str(e):
                         print("Detectado error de ruta, saltando vehículo conflictivo...")

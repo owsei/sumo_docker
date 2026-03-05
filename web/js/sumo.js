@@ -458,6 +458,11 @@
                     return;
                 }
 
+                if (data.step){
+                    document.getElementById('step').innerHTML = data.step + "<br>";
+                    return;
+                }
+
                 if (data.calle_cerrada ) {
                     document.getElementById('messages-websocket').innerHTML += data.calle_cerrada + "<br/>";
                     return;
@@ -532,6 +537,18 @@
                     }
                 }   
 
+                if (data.vehiculo_finalizado)
+                {
+                    entidades=Array.from(viewer.entities.values);
+
+                    const entidadEncontrada = entidades.find(entity => {
+                        if (entity.id == data.vehiculo_finalizado.id)
+                            return entity;
+                    });
+                    if (entidadEncontrada)
+                        window.viewer.entities.remove(entidadEncontrada)
+                    console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado)
+                }
 
                 if (data.vehiculo){
                     data = data.vehiculo;
@@ -605,7 +622,6 @@
                         );
                     }
                 }
-
 
                 if (data.stats){
                     document.getElementById('simulationStats').innerHTML = "Vehículos totales: " + data.stats.vehiculos_totales + "<br>" + "Tiempo medio de espera: " + data.stats.tiempo_medio_espera + "<br>" + "Emisiones de CO2 actuales: " + data.stats.emisiones_co2_actuales;
