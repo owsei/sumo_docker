@@ -21,6 +21,8 @@ import platform
 import asyncio
 from pyproj import Geod
 import math
+import xml.etree.ElementTree as ET
+import pandas as pd
 
 app = FastAPI()
 
@@ -291,6 +293,9 @@ async def websocket_simulation(websocket: WebSocket):
         emisiones_por_calle = os.path.join(tmpdir, "emisiones_por_calle.xml")
         print("Archivo emisiones_por_calle creado correctamente", emisiones_por_calle)
 
+        output_add_xml = os.path.join(tmpdir, "output.add.xml")
+        print("Archivo output.add.xml creado correctamente", output_add_xml)
+
         # 1. Descarga (usando el método de requests que vimos antes)
         print("Descargando datos de OSM")
         await websocket.send_json({"mensaje":"Descargando datos OSM"})
@@ -404,6 +409,12 @@ async def websocket_simulation(websocket: WebSocket):
                             <device.rerouting.probability value="1.0"/>
                             <device.rerouting.period value="10"/>
                         </routing>
+                        <additional>
+                            <edgeData id="edgeStats"
+                                file="edgeData.xml"
+                                period="60"
+                                excludeEmpty="true"/>
+                        </additional>
                     </configuration>""")
 
             
@@ -434,10 +445,11 @@ async def websocket_simulation(websocket: WebSocket):
                 "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
                 # "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
                 "--emission-output.geo","true",
-                "--emission-output", "emissions.xml",   #muestra informacion al final de la simulacion
+                "--emission-output", "emission.xml",   #muestra informacion al final de la simulacion
                 "--emission-output.step-scaled", "true",
                 # "--no-step-log", "true"
                 "--summary-output", "summary.xml",
+                # "--edge-output" ,"edgeData.parquet"
             ])
             
 
@@ -550,7 +562,6 @@ async def websocket_simulation(websocket: WebSocket):
                     except asyncio.TimeoutError:
                         # No hay mensajes nuevos, seguimos la simulación
                         pass
-
                     # Esto hace que los vehiculos que han terminado la ruta desaparezcan
                     for vehicleID in traci.simulation.getArrivedIDList():
                         vehiculo={
@@ -583,6 +594,13 @@ async def websocket_simulation(websocket: WebSocket):
 
                         await websocket.send_json({"vehiculo":vehiculo})
                     
+                    # Esto hace que los vehiculos que han terminado la ruta desaparezcan
+                    for vehicleID in traci.simulation.getArrivedIDList():
+                        vehiculo={
+                            "id": vehicleID
+                        }
+                        await websocket.send_json({"vehiculo_finalizado":vehiculo})
+
                     await asyncio.sleep(0.01)
                     # INSERCION DE SEMAFOROS
                     
@@ -664,6 +682,25 @@ async def websocket_simulation(websocket: WebSocket):
             print("Simulación finalizada correctamente")
             await websocket.send_json({"mensaje":"Simulación finalizada correctamente"})
             await websocket.send_json({"simulationState":"0"})
+
+            tree = ET.parse("tripinfo.xml")
+            root = tree.getroot()
+            data = []
+            for trip in root.findall("tripinfo"):
+                data.append({
+                    "id": trip.get("id"),
+                    "duration": float(trip.get("duration")),
+                    "waitingTime": float(trip.get("waitingTime")),
+                    "timeLoss": float(trip.get("timeLoss"))
+                })
+
+            df = pd.DataFrame(data)
+            
+            print("Duración media:", df["duration"].mean())
+            print("Tiempo de espera medio:", df["waitingTime"].mean())
+            await websocket.send_json({"stats":"Duración media:"+ str(df["duration"].mean())})
+            await websocket.send_json({"stats":"Tiempo de espera medio:"+ str(df["waitingTime"].mean())})
+            
             await websocket.close()
             
                 

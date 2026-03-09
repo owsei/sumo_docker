@@ -321,3 +321,12 @@
 #btn-launch:hover { background: #0056b3; }
 
 .status-msg { font-size: 0.8em; margin-top: 10px; color: #aaa; text-align: center; }
+
+
+
+.mapLibre{
+    height: 300px;
+    width: 600px;
+    border: 1px solid #111;
+    border-radius: 5px;
+}

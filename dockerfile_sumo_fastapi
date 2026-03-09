@@ -19,6 +19,7 @@ COPY ./red_carreteras/zona-sancho-el-fuerte.net.xml /tmp/zona-sancho-el-fuerte.n
 COPY ./red_carreteras/sancho-el-fuerte.sumocfg /tmp/sancho-el-fuerte.sumocfg
 COPY ./red_carreteras/zona-sancho-el-fuerte.rou.xml /tmp/zona-sancho-el-fuerte.rou.xml
 COPY ./ficheros_adicionales/tipos_vehiculos.add.xml /tmp/tipos_vehiculos.add.xml
+COPY ./ficheros_adicionales/output.add.xml /tmp/output.add.xml
 
 RUN echo "Instalando Fastapi"
 RUN pip install "fastapi[standard]"

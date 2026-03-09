@@ -462,7 +462,7 @@
                     document.getElementById('step').innerHTML = data.step + "<br>";
                     return;
                 }
-
+                
                 if (data.calle_cerrada ) {
                     document.getElementById('messages-websocket').innerHTML += data.calle_cerrada + "<br/>";
                     return;
@@ -547,7 +547,7 @@
                     });
                     if (entidadEncontrada)
                         window.viewer.entities.remove(entidadEncontrada)
-                    console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado)
+                    console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado.id)
                 }
 
                 if (data.vehiculo){
@@ -624,7 +624,8 @@
                 }
 
                 if (data.stats){
-                    document.getElementById('simulationStats').innerHTML = "Vehículos totales: " + data.stats.vehiculos_totales + "<br>" + "Tiempo medio de espera: " + data.stats.tiempo_medio_espera + "<br>" + "Emisiones de CO2 actuales: " + data.stats.emisiones_co2_actuales;
+                    mensaje=data.stats
+                    document.getElementById('simulationStats').innerHTML = mensaje + "<br>";
                     return;
                 }
 
@@ -669,5 +670,10 @@
                 console.log(`[message] Datos recibidos: ${event.data}`);
                 document.getElementById('messages-websocket').innerHTML += "Datos recibidos: " + event.data + "<br/>";
             };
+        }
+
+
+        function loadCzml(){
+            viewer.dataSources.add(Cesium.CzmlDataSource.load('data/datos_parking2.czml'));
         }
         
