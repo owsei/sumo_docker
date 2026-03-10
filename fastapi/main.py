@@ -24,6 +24,7 @@ from pyproj import Geod
 import math
 import xml.etree.ElementTree as ET
 import pandas as pd
+from datetime import datetime
 
 app = FastAPI()
 
@@ -498,7 +499,7 @@ async def websocket_simulation(websocket: WebSocket):
             
             file_uuid=str(uuid.uuid4().int)
             file_results = open("simulation"+file_uuid+".txt", "w")
-            # file_results.write(f"simulation generate {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}-->\n")
+            file_results.write(f"simulation generate {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}-->\n")
             await websocket.send_json({"mensaje":"Creando fichero: simulation" +file_uuid+".txt"})
                 
             
@@ -743,7 +744,6 @@ async def websocket_simulation(websocket: WebSocket):
             print("Tiempo de espera medio:", df["waitingTime"].mean())
             await websocket.send_json({"stats":"Duración media:"+ str(df["duration"].mean())})
             await websocket.send_json({"stats":"Tiempo de espera medio:"+ str(df["waitingTime"].mean())})
-            
             await websocket.close()
             
         except Exception as e:

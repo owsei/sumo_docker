@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-03-06 10:36:50 by Eclipse SUMO sumo Version 1.24.0
+<!-- generated on 2026-03-10 23:34:59 by Eclipse SUMO sumo Version 1.24.0
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
-        <net-file value="C:\Users\Pedro\AppData\Local\Temp\tmpa0drp3dy\mapa.net.xml"/>
-        <route-files value="C:\Users\Pedro\AppData\Local\Temp\tmpa0drp3dy\mapa.rou.xml"/>
+        <net-file value="C:\Users\Pedro\AppData\Local\Temp\tmpau9n3uhr\mapa.net.xml"/>
+        <route-files value="C:\Users\Pedro\AppData\Local\Temp\tmpau9n3uhr\mapa.rou.xml"/>
     </input>
 
     <output>
@@ -15,13 +15,13 @@
         <full-output value="full_data.xml"/>
         <summary-output value="summaryOutput.xml"/>
         <tripinfo-output value="tripinfoOutput.xml"/>
-        <edgedata-output value="C:\Users\Pedro\AppData\Local\Temp\tmpa0drp3dy\edgedata.xml"/>
+        <edgedata-output value="C:\Users\Pedro\AppData\Local\Temp\tmpau9n3uhr\edgedata.xml"/>
         <statistic-output value="statsOutput.xml"/>
     </output>
 
     <time>
         <begin value="0"/>
-        <end value="300"/>
+        <end value="3600"/>
         <step-length value="0.1"/>
     </time>
 
@@ -40,15 +40,15 @@
     </report>
 
     <traci_server>
-        <remote-port value="50068"/>
+        <remote-port value="49454"/>
     </traci_server>
 
 </sumoConfiguration>
 -->
 
 <statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
-    <performance clockBegin="1688284.62" clockEnd="1688317.75" clockDuration="33.13" traciDuration="24.09" realTimeFactor="0.91" vehicleUpdatesPerSecond="49.80" personUpdatesPerSecond="0.00" begin="0.00" end="30.00" duration="30.00"/>
-    <vehicles loaded="69" inserted="10" running="10" waiting="0"/>
+    <performance clockBegin="2080576.17" clockEnd="2080591.78" clockDuration="15.62" traciDuration="0.00" realTimeFactor="0.00" vehicleUpdatesPerSecond="0.00" personUpdatesPerSecond="0.00" begin="0.00" end="0.00" duration="0.00"/>
+    <vehicles loaded="2" inserted="0" running="0" waiting="0"/>
     <teleports total="0" jam="0" yield="0" wrongLane="0"/>
     <safety collisions="0" emergencyStops="0" emergencyBraking="0"/>
     <persons loaded="0" running="0" jammed="0"/>
