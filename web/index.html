@@ -22,18 +22,35 @@
 
 <body>
     <div id="toolbar">
-        <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
+        <p>Haz clic derecho en el mapa para iniciar el área, y otro clic derecho para terminar.</p>
         <button onclick="getRoadsWebsocket()" class="btn btn-primary" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
         <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
         <button onclick="testConnectionProxy()" class="btn btn-primary" id="testConnectionProxyBtn">Test Connection Proxy</button>
+        <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasMessages" aria-controls="offcanvasMessages">
+            Mostrar Mensajes
+        </button>
     </div>
+    
+    
+    <div class="offcanvas offcanvas-start show" tabindex="-1" id="offcanvasMessages" aria-labelledby="offcanvasLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="offcanvasLabel">Mensages</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvasMessages" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div>Mensajes</div>
+            <div id="messages-websocket" style="display:block; color:rgb(235, 9, 46);"></div>
+            <div id="floating-layer-messages" class="floating-layer-messages"></div>
 
+        </div>
+    </div>
+   
     <div id="cesiumContainer"></div>
 
     <div id="spinnerOverlay" class="spinner-overlay">
         <div class="spinner"></div>
     </div>
-
+    
     <!-- Botones de vuelo -->
     <div id="floatingLayer" class="floating-layer">
         <div class="form-check form-switch">
@@ -129,8 +146,10 @@
                 </div>
             </div>
         </div>
-        
     </div>
+
+    
+    
     <script src="./js/sumo.js"></script>
     <script type="module">
 

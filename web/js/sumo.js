@@ -539,7 +539,7 @@
 
                 if (data.vehiculo_finalizado)
                 {
-                    entidades=Array.from(viewer.entities.values);
+                    entidades=Array.from(window.viewer.entities.values);
 
                     const entidadEncontrada = entidades.find(entity => {
                         if (entity.id == data.vehiculo_finalizado.id)
@@ -549,6 +549,18 @@
                         window.viewer.entities.remove(entidadEncontrada)
                     console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado.id)
                 }
+
+                if (data.datos_estadistica){
+                    data = data.datos_estadistica;
+                    console.log('Datos de estadísticas:', data);
+                    entidades=Array.from(window.viewer.entities.values);
+                    for (let index = 0; index < entidades.length; index++) {
+                        
+                        // window.viewer.entities.getById(data.id).
+                        
+                    }
+                }
+                
 
                 if (data.vehiculo){
                     data = data.vehiculo;
@@ -621,6 +633,19 @@
                             new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.angle), 0, 0)
                         );
                     }
+                }
+
+                if (data.simulation_result)
+                {
+                    dataEdge=data.simulation_result.split(";");
+                    entidades=Array.from(window.viewer.entities.values);
+                    const entidadEncontrada = entidades.find(entity => {
+                        if (entity.id == data.simulation_result)
+                            return entity;
+                    });
+                    if (entidadEncontrada)
+                        window.viewer.entities.remove(entidadEncontrada)
+                    console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado)
                 }
 
                 if (data.stats){

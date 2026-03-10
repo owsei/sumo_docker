@@ -8,6 +8,7 @@ import tempfile
 import requests
 import time
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict
@@ -331,7 +332,8 @@ async def websocket_simulation(websocket: WebSocket):
                     "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
                     "--remove-edges.isolated", "true",
                     "--tls.guess","true",
-                    "--tls.join", "true"
+                    "--tls.join", "true",
+                    "--output.street-names", "true",
                 ], check=True)
             else:
                 subprocess.run([
@@ -343,7 +345,8 @@ async def websocket_simulation(websocket: WebSocket):
                     "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
                     "--remove-edges.isolated", "true",
                     "--tls.guess","true",
-                    "--tls.join", "true"
+                    "--tls.join", "true",
+                    "--output.street-names", "true",
                 ], check=True)
 
         print("Red generada correctamente")
@@ -404,6 +407,7 @@ async def websocket_simulation(websocket: WebSocket):
                         </time>
                         <output>
                             <tripinfo-output value="tripinfos.xml"/>
+                            <edgedata-output value="edgedata.xml"/>
                         </output>
                         <routing>
                             <device.rerouting.probability value="1.0"/>
@@ -423,7 +427,7 @@ async def websocket_simulation(websocket: WebSocket):
             config_file = os.path.join(tmpdir, "simulation.sumocfg")
         if zonaSnachoFuerte==1:
             if operativeSytemIsLinux==1:
-                config_file = os.path.join("D:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\sancho-el-fuerte.sumocfg")
+                config_file = os.path.join("./aditionalFiles/sancho-el-fuerte.sumocfg")
             else:
                 config_file = os.path.join("/tmp/sancho-el-fuerte.sumocfg")
         # 4. Iniciar simulación con TraCI
@@ -441,14 +445,16 @@ async def websocket_simulation(websocket: WebSocket):
                 "--device.rerouting.period", "1",        # Recalcular en cuanto cambie algo
                 "--device.rerouting.pre-period", "0",
                 "--ignore-route-errors", "true",          # <--- ESTO EVITA QUE LA SIMULACIÓN SE PARE
-                "--statistic-output", "stats.xml",   #muestra informacion al final de la simulacion
-                "--tripinfo-output", "tripinfo.xml",   #muestra informacion al final de la simulacion
-                # "--duration-log.statistics", "true", # Esto saca un resumen rápido en la consola
                 "--emission-output.geo","true",
-                "--emission-output", "emission.xml",   #muestra informacion al final de la simulacion
                 "--emission-output.step-scaled", "true",
-                # "--no-step-log", "true"
-                "--summary-output", "summary.xml",
+                "--emission-output", "emissionsOutput.xml",   #muestra informacion al final de la simulacion
+                "--statistic-output", "statsOutput.xml",   #muestra informacion al final de la simulacion
+                "--tripinfo-output", "tripinfoOutput.xml",   #muestra informacion al final de la simulacion
+                "--summary-output", "summaryOutput.xml",   #muestra informacion al final de la simulacion
+                "--full-output","full_data.xml",
+                # "--edgedata-output","edgeDataOutput.xml",
+                # "--lane-data-output","laneDataOutput.xml",
+                # "--vehicle-data-output","vehicleDataOutput.xml"
                 # "--edge-output" ,"edgeData.parquet"
             ])
             
@@ -486,8 +492,16 @@ async def websocket_simulation(websocket: WebSocket):
 
             # Inicializar el diccionario de semáforos
             trafficLightDictionary = []
+            historico_datos = {}
             net = sumolib.net.readNet(net_file, withInternal=True, withPedestrianConnections=True,withLatestPrograms=True)
-
+            claves_a_sumar = ["ocupacion", "travel_time", "ruido", "co2", "HCE", "nox", "pmx"]
+            
+            file_uuid=str(uuid.uuid4().int)
+            file_results = open("simulation"+file_uuid+".txt", "w")
+            # file_results.write(f"simulation generate {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}-->\n")
+            await websocket.send_json({"mensaje":"Creando fichero: simulation" +file_uuid+".txt"})
+                
+            
             while step < duration_sec and traci.simulation.getMinExpectedNumber() > 0:
                 try:
                     traci.simulationStep()  # Avanzar un paso
@@ -583,6 +597,32 @@ async def websocket_simulation(websocket: WebSocket):
                         speed = traci.vehicle.getSpeed(veh)
                         angle = traci.vehicle.getAngle(veh)
                         
+                        edgeID=traci.vehicle.getRoadID(veh)
+                        
+                        ocupacion = traci.edge.getLastStepOccupancy(edgeID)
+                        # Tiempo de viaje medio: cuánto tarda un coche en cruzar esa calle ahora mismo
+                        travel_time = traci.edge.getTraveltime(edgeID)
+                        # Nivel de ruido (en dB)
+                        ruido = traci.edge.getNoiseEmission(edgeID)
+                        co2 = traci.edge.getCO2Emission(edgeID)
+                        hce = traci.edge.getHCEmission(edgeID)
+                        nox = traci.edge.getNOxEmission(edgeID)
+                        pmx = traci.edge.getPMxEmission(edgeID)
+                        streetName= traci.edge.getStreetName(edgeID)
+                        cadena_file=f"{edgeID};{streetName};{ocupacion};{travel_time};{ruido};{co2};{hce};{nox};{pmx}\n"
+                        file_results.write(cadena_file)
+                        await websocket.send_json({"mensaje":f"Escribiendo {cadena_file}"})
+                        if edgeID not in historico_datos:
+                            historico_datos[edgeID]=[ocupacion, travel_time, ruido, co2, nox, pmx]
+                        else:
+                            historico_datos[edgeID][0] += ocupacion
+                            historico_datos[edgeID][1] += travel_time
+                            historico_datos[edgeID][2] += ruido
+                            historico_datos[edgeID][3] += co2
+                            # historico_datos[edgeID][4] += hce
+                            historico_datos[edgeID][4] += nox
+                            historico_datos[edgeID][5] += pmx
+                        
                         vehiculo={
                             "id": veh,
                             "longitude": lon,
@@ -602,43 +642,45 @@ async def websocket_simulation(websocket: WebSocket):
                         await websocket.send_json({"vehiculo_finalizado":vehiculo})
 
                     await asyncio.sleep(0.01)
-                    # INSERCION DE SEMAFOROS
-                    
-                    lista_semaforos = traci.trafficlight.getIDList()
-                    # # Semaforos
-                    for tflID in traci.trafficlight.getIDList():
-                        position=None
-                        if tflID.startswith("GS_"):
-                            position = traci.junction.getPosition(tflID[3:len(tflID)])
-                        else:
-                            position = traci.junction.getPosition(tflID)
-                        
-                        # programs = traci.trafficlight.getAllProgramLogics(tflID)
-                        lon, lat = traci.simulation.convertGeo(position[0], position[1])
-                        state=traci.trafficlight.getRedYellowGreenState(tflID)
 
-                        tfl ={
-                            "id": tflID,
-                            "longitude": lon,
-                            "latitude": lat,
-                            "state": state,
-                            "color": getTrafficLightColor(state[0]),
-                            # "programs": programs
-                        }
-                        await websocket.send_json({"trafficlight":tfl})
+                    # INSERCION DE SEMAFOROS
+                    # lista_semaforos = traci.trafficlight.getIDList()
+                    # # # Semaforos
+                    # for tflID in traci.trafficlight.getIDList():
+                    #     position=None
+                    #     if tflID.startswith("GS_"):
+                    #         position = traci.junction.getPosition(tflID[3:len(tflID)])
+                    #     else:
+                    #         position = traci.junction.getPosition(tflID)
+                        
+                    #     # programs = traci.trafficlight.getAllProgramLogics(tflID)
+                    #     lon, lat = traci.simulation.convertGeo(position[0], position[1])
+                    #     state=traci.trafficlight.getRedYellowGreenState(tflID)
+
+                    #     tfl ={
+                    #         "id": tflID,
+                    #         "longitude": lon,
+                    #         "latitude": lat,
+                    #         "state": state,
+                    #         "color": getTrafficLightColor(state[0]),
+                    #         # "programs": programs
+                    #     }
+                    #     await websocket.send_json({"trafficlight":tfl})
 
                     await asyncio.sleep(0.01)
+                    
                     
                     step += 1
                     await websocket.send_json({"step": step})
                 except traci.TraCIException as e:
+                    file_results.close()
                     if "has no valid route" in str(e):
                         print("Detectado error de ruta, saltando vehículo conflictivo...")
                         # El parámetro --ignore-route-errors en el start suele bastar,
                         # pero aquí podrías manejar lógica extra.
                 
 
-            
+            await websocket.send_json({"datos_estadistica":historico_datos})
             total_co2_kg = total_co2_mg / 1000000
             print(f"Total CO2: {total_co2_kg} kg")
             await websocket.send_json({
@@ -666,19 +708,20 @@ async def websocket_simulation(websocket: WebSocket):
             await websocket.send_json({"stats":stats})
             
             # 2. Leer el archivo de emisiones generado
-            try:
-                with open(emisiones_por_calle, 'r') as f:
-                    # Leemos todo el contenido
-                    contenido = f.read()
-                    # Enviamos el contenido crudo al frontend
-                    # (El frontend tendrá que parsear este XML)
-                    await websocket.send_json({"emisiones_xml": contenido})
-                    print("Archivo de emisiones enviado al frontend")
-            except Exception as e:
-                print(f"Error leyendo el archivo de emisiones: {e}")
+            # try:
+            #     with open(emisiones_por_calle, 'r') as f:
+            #         # Leemos todo el contenido
+            #         contenido = f.read()
+            #         # Enviamos el contenido crudo al frontend
+            #         # (El frontend tendrá que parsear este XML)
+            #         await websocket.send_json({"emisiones_xml": contenido})
+            #         print("Archivo de emisiones enviado al frontend")
+            # except Exception as e:
+            #     print(f"Error leyendo el archivo de emisiones: {e}")
 
             # Cerrar TraCI
             traci.close()
+            file_results.close()
             print("Simulación finalizada correctamente")
             await websocket.send_json({"mensaje":"Simulación finalizada correctamente"})
             await websocket.send_json({"simulationState":"0"})
@@ -703,11 +746,9 @@ async def websocket_simulation(websocket: WebSocket):
             
             await websocket.close()
             
-                
-            
-            
         except Exception as e:
             print(f"Error en la simulación:")
+            file_results.close()
             await websocket.send_json({"mensaje":"Error en la simulación: "+str(e)})
             if traci.isLoaded():
                 traci.close()
