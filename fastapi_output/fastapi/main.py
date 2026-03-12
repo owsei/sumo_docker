@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict
 import uuid
 # from constants import PREFIX, DOUBLE_ROWS, ROW_DIST, SLOTS_PER_ROW, SLOT_WIDTH
-sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
 from sumolib import checkBinary
 import traci
 from urllib.parse import unquote
@@ -23,6 +22,7 @@ from pyproj import Geod
 import math
 import xml.etree.ElementTree as ET
 import pandas as pd
+sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
 
 app = FastAPI()
 
@@ -77,72 +77,6 @@ def download_osm_data(bbox: BoundingBox, output_path: str):
         print("Error al conectar con Overpass: ", response.status_code)
         raise Exception(f"Error al conectar con Overpass: {response.status_code}")
 
-def convert_net_to_geojson_net(net_file):
-    """
-    Usa sumolib para leer la red de SUMO y crear un GeoJSON 
-    con nombre de calle, tipo y otros atributos.
-    """
-    # Cargamos la red
-    net = sumolib.net.readNet(net_file)
-    features = []
-
-    for edge in net.getEdges():
-        # Obtenemos la geometría (forma) de la carretera
-        # Convertimos las coordenadas internas de SUMO a Lon/Lat
-        shape = edge.getShape()
-        coords = [net.convertXY2LonLat(x, y) for x, y in shape]
-        # Extraemos las propiedades que queremos
-        # Nota: edge.getName() devuelve el nombre de la calle de OSM
-        properties = {
-            "id": edge.getID(),
-            "nombre": edge.getStreetName() or "Calle sin nombre",
-            "tipo": edge.getType(),
-            "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
-            "carriles": edge.getLaneNumber()
-        }
-
-        feature = {
-            "type": "Feature",
-            "geometry": {
-                "type": "LineString",
-                "coordinates": coords
-            },
-            "properties": properties
-        }
-        features.append(feature)
-
-    # Obtener todos los sistemas de semáforos (TLS)
-    semaforos = net.getTrafficLights()
-
-    for tls in semaforos:
-        tls_id = tls.getID()
-        # Los semáforos están asociados a nodos (junctions)
-        nodos = tls.getNodes()
-        for nodo in nodos:
-            x, y = nodo.getCoord()
-            lon, lat = net.convertXY2LonLat(x, y)
-            properties = {
-                "id": tls_id,
-                "tipo": "trafficlight"
-            }
-            feature = {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [lon, lat]
-                },
-                "properties": properties
-            }
-            features.append(feature)
-
-    return {
-        "type": "FeatureCollection",
-        "features": features
-    }
-
-def findRoute(traci,origen,destino):
-    return traci.simulation.findRoute(origen, destino)
-
 def getVelocityStyle(velocity):
 
     if (velocity>119):
@@ -175,123 +109,8 @@ def getTrafficLightColor(state):
 async def root():
     return {"status": "ok"}
 
-
-#**************************SIMULACION******************************#
-@app.get("/simulation_output")
-async def simulacion_output():
-    
-    # DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
-    operativeSytemIsLinux= 0 if platform.system()=="Linux" else 1
-    if operativeSytemIsLinux==0:
-       sumo_home = "/usr/share/sumo"
-    else:
-       sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-
-    print("Ruta de SUMO encontrada correctamente", sumo_home,"Operative system",platform.system())
-
-    # 1. Generar tráfico aleatorio sobre una red de ejemplo (sancho el fuerte)
-    print("Generando tráfico aleatorio")
-    with tempfile.TemporaryDirectory() as tmpdir:
-
-        try:
-            route_file = os.path.join(tmpdir, "mapa.rou.xml")
-            print("Archivo ROUT creado correctamente", route_file)
-
-            if operativeSytemIsLinux==0:
-                net_file = "/tmp/zona-sancho-el-fuerte.net.xml"
-            else:
-                net_file = "D:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\zona-sancho-el-fuerte.net.xml"
-
-            random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
-            if operativeSytemIsLinux==0:
-                subprocess.run([
-                    "python3", random_trips,
-                    "-n", net_file,
-                    "-r", route_file,
-                    "-e", "3600",  # Simular 3600 segundos de tráfico
-                    "--period", "10", # Aparece un coche cada 0.5 segundos
-                    "--fringe-factor", "10"
-                ], check=True)  
-            else:
-                subprocess.run([
-                    "python", random_trips,
-                    "-n", net_file,
-                    "-r", route_file,
-                    "-e", "3600",  # Simular 3600 segundos de tráfico
-                    "--period", "10", # Aparece un coche cada 0.5 segundos
-                    "--fringe-factor", "10"
-                ], check=True)  
-            
-
-            # crea el archivo de configuración SUMO
-            config_file = os.path.join(tmpdir, "simulation.sumocfg")
-            print("Archivo de configuración SUMO creado correctamente", config_file)
-            with open(config_file, 'w') as f:
-                f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
-                <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.xsd">
-                    <input>
-                        <net-file value="{net_file}"/>
-                        <route-files value="{route_file}"/>
-                    </input>
-                    <time>
-                        <begin value="0"/>
-                        <end value="3600"/>
-                    </time>
-                    <output>
-                        <tripinfo-output value="tripinfos.xml"/>
-                        <netstate-dump value="netstate.xml" />
-                    </output>
-                    <routing>
-                        <device.rerouting.probability value="1.0"/>
-                        <device.rerouting.period value="10"/>
-                    </routing>
-                    <additional>
-                        <edgeData id="edgeStats"
-                            file="edgeData.xml"
-                            period="60"
-                            excludeEmpty="true"/>
-                    </additional>
-                </configuration>""")
-
-            print("Archivos de configuración SUMO generados correctamente")
-            config_file = os.path.join(tmpdir, "simulation.sumocfg")
-            
-            if operativeSytemIsLinux==1:
-                config_file = os.path.join("D:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\sancho-el-fuerte.sumocfg")
-            else:
-                config_file = os.path.join("/tmp/sancho-el-fuerte.sumocfg")
-
-            sumo = os.path.join(sumo_home, "bin", "sumo")  #
-            print("Lanzando simulación con SUMO")
-            try:
-                subprocess.run([
-                        "python", sumo,
-                        "-n", net_file,
-                        "-r", route_file,
-                        "-e", "3600",  # Simular 3600 segundos de tráfico
-                        "--period", "10", # Aparece un coche cada 0.5 segundos
-                        "--fringe-factor", "10",
-                        "--full-output", "full_output.xml",
-                        "--emission-output.geo", "emission.xml",
-                        "--emission-output.precision", "2",
-                    ], check=True)  
-
-                print("Finalizada la simulación con SUMO")
-            except Exception as e:
-                print(f"Error al ejecutar SUMO: {e}")
-                raise HTTPException(status_code=500, detail=f"Error al ejecutar SUMO: {e}")
-        
-        except Exception as e:
-            print(f"Error en la simulación: {e}")
-            raise HTTPException(status_code=500, detail=f"Error en la simulación: {e}")
-            
-
-
-
-
-
-
 #**************************WEBSOCKET******************************#
+
 @app.websocket("/ws/simulation")
 async def websocket_simulation(websocket: WebSocket):
     await websocket.accept()
@@ -350,9 +169,6 @@ async def websocket_simulation(websocket: WebSocket):
         
         emisiones_por_calle = os.path.join(tmpdir, "emisiones_por_calle.xml")
         print("Archivo emisiones_por_calle creado correctamente", emisiones_por_calle)
-
-        output_add_xml = os.path.join(tmpdir, "output.add.xml")
-        print("Archivo output.add.xml creado correctamente", output_add_xml)
 
         # 1. Descarga (usando el método de requests que vimos antes)
         print("Descargando datos de OSM")
@@ -467,22 +283,15 @@ async def websocket_simulation(websocket: WebSocket):
                             <device.rerouting.probability value="1.0"/>
                             <device.rerouting.period value="10"/>
                         </routing>
-                        <additional>
-                            <edgeData id="edgeStats"
-                                file="edgeData.xml"
-                                period="60"
-                                excludeEmpty="true"/>
-                        </additional>
                     </configuration>""")
 
             
 
             print("Archivos de configuración SUMO generados correctamente")
             config_file = os.path.join(tmpdir, "simulation.sumocfg")
-
         if zonaSnachoFuerte==1:
             if operativeSytemIsLinux==1:
-                config_file = os.path.join("D:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\sancho-el-fuerte.sumocfg")
+                config_file = os.path.join("../adicionalFiles/sancho-el-fuerte.sumocfg")
             else:
                 config_file = os.path.join("/tmp/sancho-el-fuerte.sumocfg")
         # 4. Iniciar simulación con TraCI
@@ -508,7 +317,7 @@ async def websocket_simulation(websocket: WebSocket):
                 "--emission-output.step-scaled", "true",
                 # "--no-step-log", "true"
                 "--summary-output", "summary.xml",
-                # "--edge-output" ,"edgeData.parquet"
+
             ])
             
 
@@ -772,244 +581,127 @@ async def websocket_simulation(websocket: WebSocket):
                 traci.close()
             raise HTTPException(status_code=500, detail=str(e))
 
-# WEBSOCKET PARA OBTENER LAS CARRETERAS
-@app.websocket("/ws/getRoads")
-async def get_roads_websocket(websocket: WebSocket):
-    await websocket.accept()
-    bbox_str = websocket.query_params.get("bbox")
-    if not bbox_str:
-        await websocket.send_json({"error": "No se proporcionó bbox"})
-        return
-    try:
-        bbox = BoundingBox(**json.loads(bbox_str))
-    except json.JSONDecodeError:
-        await websocket.send_json({"error": "bbox inválido"})
-        return
+
+#**************************SIMULACION******************************#
+@app.get("/simulation_output")
+async def simulacion_output():
     
-    await websocket.send_json({"mensaje": "bbox recibido correctamente"})
-
-    bbox_str = websocket.query_params.get("mapa_")
-
-    
-    sumo_home = os.environ.get("SUMO_HOME")
-
-    if not sumo_home:
-        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-
-    print("Ruta de SUMO encontrada correctamente", sumo_home)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        osm_file = os.path.join(tmpdir, "mapa.osm.xml")
-        net_file = os.path.join(tmpdir, "mapa.net.xml")
-
-        try:
-            # 1. Descarga (usando el método de requests que vimos antes)
-            print("Descargando datos de OSM")
-            download_osm_data(bbox, osm_file)
-            print("Datos de OSM descargados correctamente")
-            sumo_types = ",".join([f"highway.{t}" for t in bbox.road_types])
-            print("Tipos de carreteras seleccionados correctamente")
-            # 2. Generar red de SUMO
-            print("Generando red de SUMO")
-            subprocess.run([
-                os.path.join(sumo_home, "bin", "netconvert"),
-                "--osm-files", osm_file,
-                "--output-file", net_file,
-                "--geometry.remove", "true",
-                "--junctions.join", "true",
-                "--proj.utm", "true",
-                "--keep-edges.by-type", sumo_types, # <--- Mantiene solo estos tipos
-                "--remove-edges.isolated", "true",
-                "--output.street-names", "true",
-                "--tls.guess","true",
-                "--tls.join", "true"
-            ], check=True)  
-            print("Red de SUMO generada correctamente")
-            
-            # 3. FUNCION DE LEER LA RED GENERADA DE OSM
-            net = sumolib.net.readNet(net_file, withInternal=True, withPedestrianConnections=True,withLatestPrograms=True)
-            
-            # INSERCION DE CARRETERAS
-            for edge in net.getEdges():
-                for lane in edge.getLanes():
-                    # Obtenemos la geometría (forma) de la carretera
-                    # Convertimos las coordenadas internas de SUMO a Lon/Lat
-                    idLane=lane.getID()
-                    shape = lane.getShape()
-                    coords = [net.convertXY2LonLat(x, y) for x, y in shape]
-
-                    velocityStyle = getVelocityStyle(lane.getSpeed() * 3.6)
-
-                    # Extraemos las propiedades que queremos
-                    # Nota: edge.getName() devuelve el nombre de la calle de OSM
-                    print("Edge ID:", idLane)
-                    properties = {
-                        "type": "lane",
-                        "id": idLane,
-                        "nombre": edge.getName() or "Calle sin nombre",
-                        "tipo": edge.getType(),
-                        "velocidad_max": lane.getSpeed() * 3.6, # Convertir m/s a km/h
-                        # "carriles": edge.getLaneNumber(),
-                        "tamaño": lane.getLength(),
-                        # "origen": edge,
-                        # "destino": edge.getTo(),
-                        # "prioridad": edge.getPriority(),    
-                        "prohibida": False,
-                        "color": velocityStyle,
-                        # "orientation": lane.getAngle(lane.getEdgeID(),None),
-                        "edgeID": edge.getID()
-                    }
-
-                    feature = {
-                        "type": "feature",
-                        "geometry": {
-                            "type": "LineString",
-                            "coordinates": coords
-                        },
-                        "properties": properties
-                    }
-                    await websocket.send_json(feature)
-            await websocket.send_json({"mensaje": "Descarga de carreteras finalizada correctamente👍"})
-            
-            # INSERCION DE SEMAFOROS
-            # Obtener todas uniones de la red entre lanes
-            for junction in net.getNodes():
-                idJunction =junction.getID()
-                # Obtener el polígono de la unión
-                shape = junction.getShape()
-                coordinates = []
-                for x, y in shape:
-                    lon, lat = net.convertXY2LonLat(x, y)
-                    coordinates.append([lon, lat])
-
-                if coordinates:
-                    coordinates.append(coordinates[0])
-
-                feature = {
-                    "type": "feature",
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [coordinates]
-                    },
-                    "properties": {
-                        "id": idJunction,
-                        "type": "junction",
-                    }
-                }
-                
-                await websocket.send_json(feature)
-            await websocket.send_json({"mensaje": "Descarga de uniones finalizada correctamente👍"})
-
-            # INSERCION DE SEMAFOROS
-            semaforos_detallados = []
-
-            for tls in net.getTrafficLights():
-                tls_id = tls.getID()
-                
-                # El TLS nos da las conexiones (el "puente" entre calles)
-                for connection in tls.getConnections():
-                    # connection[0] es el carril de entrada (Lane)
-                    lane_entrada = connection[0]
-                    link_index = connection[2] # Su posición en el código de luces (0, 1, 2...)
-                    
-                    # El semáforo físico está al final del carril
-                    shape = lane_entrada.getShape()
-                    punto_final = shape[-1] 
-                    
-                    lon, lat = net.convertXY2LonLat(punto_final[0], punto_final[1])
-                    
-                    # Calculamos la orientación para que en Cesium no miren a Cuenca
-                    # angulo = lane_entrada.getAngle(relativePos=-1)
-                    
-                    semaforos_detallados.append({
-                        "id": f"{tls_id}_{link_index}",
-                        "lon": lon,
-                        "lat": lat,
-                        # "heading": angulo
-                    })
-
-                    feature = {
-                        "type": "feature",
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [lon, lat]
-                        },
-                        "properties": {
-                            "id": f"{tls_id}_{link_index}",
-                            "type": "trafficlight",
-                        }
-                    }
-                    await websocket.send_json(feature)
-            await websocket.send_json({"mensaje": "Descarga de semáforos finalizada correctamente👍 Nº:" + str(len(semaforos_detallados))})
-
-            await websocket.close()
-        except Exception as e:
-            await websocket.send_json({"mensaje": "Error en la descarga de carreteras: "+str(e)})
-            await websocket.close()
-            raise HTTPException(status_code=500, detail=str(e))
-        
-        finally:
-            await websocket.send_json({"mensaje": "Descarga de carreteras finalizada 👍"})
-            await websocket.close()
-
-@app.websocket("/ws/getRoadsPamplona")
-async def get_roads_websocket(websocket: WebSocket):
-    await websocket.accept()
-
-
-    #DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
+    # DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
     operativeSytemIsLinux= 0 if platform.system()=="Linux" else 1
     if operativeSytemIsLinux==0:
        sumo_home = "/usr/share/sumo"
     else:
-        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
+       sumo_home = r"C:\Proyectos\01_sumo-1.26.0"
+       ruta= r"C:\Proyectos\twin-sumo-output\red_carreteras"
+       ruta_output= r"C:\Proyectos\twin-sumo-output\output_files"
 
-    if not sumo_home:
-        sumo_home = r"C:\Program Files (x86)\Eclipse\Sumo"
-    
-    net_file = ""
+    print("Ruta de SUMO encontrada correctamente", sumo_home,"Operative system",platform.system())
 
-    print("Ruta de SUMO encontrada correctamente", sumo_home)
+    # 1. Generar tráfico aleatorio sobre una red de ejemplo (sancho el fuerte)
+    print("Generando tráfico aleatorio")
     with tempfile.TemporaryDirectory() as tmpdir:
-        if operativeSytemIsLinux==0:
-            net_file = os.path.join(tmpdir, "pamplona_v1.net.xml")
-        else:
-            net_file = os.path.join(r"D:\Proyectos\SUMO_DOCKER\red_carreteras", "zona-sancho-el-fuerte.net.xml")
-
         try:
-            # 1. Descarga (usando el método de requests que vimos antes)
-            print("Red de SUMO generada correctamente")
-            # 3. EN LUGAR DE LLAMAR A net2geojson.py, USAMOS NUESTRA FUNCIÓN
-            net = sumolib.net.readNet(net_file)
-            features = []
+            route_file = os.path.join(tmpdir, "mapa.rou.xml")
+            print("Archivo ROUT creado correctamente", route_file)
 
-            for edge in net.getEdges():
-                # Obtenemos la geometría (forma) de la carretera
-                # Convertimos las coordenadas internas de SUMO a Lon/Lat
-                shape = edge.getShape()
-                coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+            if operativeSytemIsLinux==0:
+                net_file = "/tmp/zona-sancho-el-fuerte.net.xml"
+                route_file= "/tmp/mapa.rou.xml"
+            else:
+                net_file =ruta + r"\zona-sancho-el-fuerte.net.xml"
+                route_file= ruta + r"\mapa.rou.xml"
 
-                # Extraemos las propiedades que queremos
-                # Nota: edge.getName() devuelve el nombre de la calle de OSM
-                properties = {
-                    "id": edge.getID(),
-                    "nombre": edge.getName() or "Calle sin nombre",
-                    "tipo": edge.getType(),
-                    "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
-                    "carriles": edge.getLaneNumber()
-                }
+            random_trips = os.path.join(sumo_home, "tools", "randomTrips.py")
+            if operativeSytemIsLinux==0:
+                subprocess.run([
+                    "python3", random_trips,
+                    "-n", net_file,
+                    "-r", route_file,
+                    "-e", "3600",  # Simular 3600 segundos de tráfico
+                    "--period", "10", # Aparece un coche cada 0.5 segundos
+                    "--fringe-factor", "10"
+                ], check=True)  
+            else:
+                subprocess.run([
+                    "python", random_trips,
+                    "-n", net_file,
+                    "-r", route_file,
+                    "-e", "3600",  # Simular 3600 segundos de tráfico
+                    "--period", "10", # Aparece un coche cada 0.5 segundos
+                    "--fringe-factor", "10"
+                ], check=True)  
 
-                feature = {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": coords
-                    },
-                    "properties": properties
-                }
-                await websocket.send_json(feature)
-            await websocket.send_json({"mensaje": "Descarga de carreteras finalizada correctamente👍"})
-            await websocket.close()
+            # crea el archivo de configuración SUMO
 
+            if operativeSytemIsLinux==0:
+                config_file = "/tmp/simulation.sumocfg"
+            else:
+                config_file = ruta + r"\simulation.sumocfg"
+                route_file = ruta + r"\mapa.rou.xml"
+                # edgeDataTraffic_file = ruta_output + r"\edgeDataTraffic.xml" # ESTADISTICAS DE TRAFICO DE CADA CALLE
+                # laneDataTraffic_file = ruta_output + r"\laneDataTraffic.xml"
+                # full_output_file = ruta_output + r"\full_output.xml"
+                # net_state_file = ruta_output + r"\net_state.xml"
+                # stats_file = ruta_output + r"\stats.xml"
+                # edgeDataEmissions_file = ruta_output + r"\edgeDataEmissions.xml"
+                # laneDataEmissions_file = ruta_output + r"\laneDataEmissions.xml"
+
+                # vehicle_emissions_file = ruta_output + r"\vehicle_emissions.xml"
+                
+                
+                # summary_file = ruta_output + r"\summary.xml"
+                # tripinfo_file = ruta_output + r"\tripinfo.xml"
+                # mapa_estadisticas_file = ruta_output + r"\mapa_estadisticas.xml"
+                # edge_emissions_file = ruta_output + r"\edge_emissions.xml"
+                # datos_calles_file = ruta_output + r"\datos_calles.xml"
+
+
+            print("Archivo de configuración SUMO creado correctamente", config_file)
+            with open(config_file, 'w') as f:
+                f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
+                <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.xsd">
+                    <input>
+                        <net-file value="zona-sancho-el-fuerte.net.xml"/>
+                        <route-files value="{route_file}"/>
+                        <additional-files value="additional.add.xml"/>
+                    </input>
+                    <routing>
+                        <device.rerouting.probability value="1.0"/>
+                        <device.rerouting.period value="10"/>
+                    </routing>
+                </configuration>""")
+
+            print("Archivos de configuración SUMO generados correctamente")
+
+            sumo = os.path.join(sumo_home, "bin", "sumo")  #
+            print("Lanzando simulación con SUMO")
+            try:
+                subprocess.run([
+                        sumo,
+                        "-c", config_file,
+                        "-b", "0",
+                        "-e", "3600",
+                        # "-n", net_file,
+                        # "-r", route_file,
+                        "-v", "true"
+                    ], check=True,capture_output=True, text=True)  
+
+                print("Finalizada la simulación con SUMO")
+                
+                # xml2csv = os.path.join(sumo_home, "tools","xml", "xml2csv.py")
+                # subprocess.run([
+                #     "python", xml2csv, "../output/edgeEmissions.xml"
+                #     "--output", "../output/edgeEmissions.csv"
+                #     ], check=True)  
+
+
+                return {"mensaje": "Simulación finalizada correctamente"}
+            except Exception as e:
+                print(f"Error al ejecutar SUMO: {e}")
+                raise HTTPException(status_code=500, detail=f"Error al ejecutar SUMO: {e}")
+        
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            print(f"Error en la simulación: {e}")
+            raise HTTPException(status_code=500, detail=f"Error en la simulación: {e}")d
+            
 

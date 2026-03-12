@@ -1,0 +1,6 @@
+<additional>
+    <edgeData id="emissions"
+              file="edge_emissions.xml"
+              period="60"
+              includeEmpty="true"/>
+</additional>

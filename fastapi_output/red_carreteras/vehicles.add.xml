@@ -1,0 +1,34 @@
+<additional>
+    <vType id="turismo" 
+           vClass="passenger" 
+           accel="2.6" 
+           decel="4.5" 
+           sigma="0.5" 
+           length="5.0" 
+           minGap="2.5" 
+           maxSpeed="33.33" 
+           color="white"
+           emissionClass="HBEFA3/PC_G_EU4"/>
+
+    <vType id="camion" 
+           vClass="truck" 
+           accel="1.2" 
+           decel="4.0" 
+           sigma="0.5" 
+           length="12.0" 
+           minGap="3.0" 
+           maxSpeed="22.22" 
+           color="yellow"
+           emissionClass="HBEFA3/HDV_D_EU4"/>
+
+    <vType id="bus" 
+           vClass="bus" 
+           accel="1.5" 
+           decel="4.0" 
+           sigma="0.5" 
+           length="12.0" 
+           minGap="3.0" 
+           maxSpeed="15.0" 
+           color="orange"
+           emissionClass="HBEFA3/Bus_D_EU4"/>
+</additional>
