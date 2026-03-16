@@ -11,3 +11,6 @@ rtree
 traci
 pyproj
 pygeodesy
+# pathlib
+pyarrow
+lxml

@@ -1,39 +1,36 @@
-
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV SUMO_HOME=/usr/share/sumo
 ENV PYTHONPATH="$SUMO_HOME/tools"
 
-# 1. Instalar SUMO
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:sumo/stable \
-    && apt-get update \
-    && apt-get install -y \
-    sumo sumo-tools python3 python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update
+RUN echo "Instalando dependencias de SUMO"
+RUN apt-get install -y sumo sumo-tools
+RUN echo "Instalando dependencias de python"
+RUN apt-get install -y python3 python3-pip
+RUN echo "Instalando dependencias de nginx"
+RUN apt-get install -y nginx
 
-# COPY ./red_carreteras/pamplona_v1.net.xml /tmp/pamplona_v1.net.xml
+RUN echo "SUMO instalado correctamente"
+RUN echo "Copiando archivos de SUMO"
+
+RUN mkdir -p /tmp/output
+
 COPY ./red_carreteras/zona-sancho-el-fuerte.net.xml /tmp/zona-sancho-el-fuerte.net.xml
-COPY ./red_carreteras/sancho-el-fuerte.sumocfg /tmp/sancho-el-fuerte.sumocfg
 COPY ./red_carreteras/zona-sancho-el-fuerte.rou.xml /tmp/zona-sancho-el-fuerte.rou.xml
-COPY ./ficheros_adicionales/tipos_vehiculos.add.xml /tmp/tipos_vehiculos.add.xml
-COPY ./ficheros_adicionales/output.add.xml /tmp/output.add.xml
+COPY ./red_carreteras/additional.add.xml /tmp/additional.add.xml
+COPY ./red_carreteras/mapa.rou.xml /tmp/mapa.rou.xml
+COPY ./red_carreteras/vehicles.add.xml /tmp/vehicles.add.xml
+COPY ./red_carreteras/simulation.sumocfg /tmp/simulation.sumocfg
+
+RUN echo "Archivos copiandos de SUMO"
 
 RUN echo "Instalando Fastapi"
 RUN pip install "fastapi[standard]"
-
-# 2. Configurar el entorno de Python
 WORKDIR /code
 COPY ./fastapi/requirements.txt /code/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+RUN pip install -r /code/requirements.txt
 COPY ./fastapi/ /code/app
 
-# 3. Copiar el código de la API y mapas
-COPY . .
-
-# Exponer el puerto de FastAPI
-EXPOSE 8000
-
-CMD ["fastapi", "run", "app/main.py", "--port", "8000"]
+CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]

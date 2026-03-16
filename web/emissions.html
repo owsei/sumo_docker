@@ -21,40 +21,11 @@
 </head>
 
 <body>
-    <div>
-        <nav class="navbar navbar-expand-lg bg-body-tertiary" data-bs-theme="dark">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="#">SUMO</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarNavDropdown">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a id="getRoadsWebsocketBtn" class="nav-link active bi bi-sign-intersection-side" aria-current="page" href="#" onclick="getRoadsWebsocket()" aria-disabled="true"> Descargar carreteras</a>
-                    </li>
-                    <li class="nav-item">
-                        <a id="getRoadsWebsocketBtn" class="nav-link active bi bi-sign-intersection-side" aria-current="page" href="#" onclick="getRoadsSanchoElFuerte()" aria-disabled="true"> Descargar Sancho El Fuerte</a>
-                    </li>
-                    <li class="nav-item">
-                        <a id="simWebsocketBtn" class="nav-link bi bi-car-front" href="#" onclick="runSimulationEmissions()" aria-disabled="true"> Run simulation</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link bi bi-cpu" href="#" onclick="testConnectionProxy()"> Test </a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Navegar a...
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" onclick="flyToPamplona()"">Pamplona</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="flyToA10()">A10</a></li>
-                        </ul>
-                    </li>
-                </ul>
-                </div>
-            </div>
-            </nav>
+    <div id="toolbar">
+        <p>Haz clic en el mapa para iniciar el área, y otro clic para terminar.</p>
+        <button onclick="getRoadsWebsocket()" class="btn btn-primary" id="getRoadsWebsocketBtn" disabled>Descargar carreteras Websocket</button>
+        <button onclick="runSimulationWebsocket()" class="btn btn-primary" id="simWebsocketBtn" disabled>Iniciar Simulación Websocket</button>
+        <button onclick="testConnectionProxy()" class="btn btn-primary" id="testConnectionProxyBtn">Test Connection Proxy</button>
     </div>
 
     <div id="cesiumContainer"></div>
@@ -73,6 +44,10 @@
             <input class="form-check-input" type="checkbox" role="switch" id="zonaSnachoFuerte">
             <label class="form-check-label" for="zonaSnachoFuerte">Zona Sancho Fuerte</label>
         </div>
+        <button onclick="flyToA10()" class="btn btn-primary" id="flyToA10Btn">Volar a A10</button>
+        <button onclick="flyToPamplona()" class="btn btn-primary" id="flyToPamplonaBtn">Volar a Pamplona</button>
+        <button onclick="loadCzml()" class="btn btn-primary" id="flyToPamplonaBtn">CargarCZML</button>
+
         <br/>
         <text id="num_vehicles_text">Número de vehículos:</text><br/>
         <input type="number" id="num_vehicles" value=1000><br/>

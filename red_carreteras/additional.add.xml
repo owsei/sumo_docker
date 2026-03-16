@@ -1,0 +1,41 @@
+<additional>
+       <edgeData id="medida_calle" freq="10" file="../output/edgeTraffic.xml" excludeEmpty="true"/>
+       <!-- <laneData id="medida_carril" freq="10" file="../output/laneTraffic.xml" excludeEmpty="true"/> -->
+       <edgeData id="edge" type="emissions" period="10" file="../output/edgeEmissions.xml" excludeEmpty="true"/>
+       <!-- <laneData id="carril" type="emissions" period="10" file="../output/laneEmissions.xml" excludeEmpty="true"/> -->
+       <vType id="turismo" 
+              vClass="passenger" 
+              accel="2.6" 
+              decel="4.5" 
+              sigma="0.5" 
+              length="5.0" 
+              minGap="2.5" 
+              maxSpeed="33.33" 
+              color="white"
+              emissionClass="HBEFA3/PC_G_EU4"/>
+    
+       <vType id="bus" 
+              vClass="bus" 
+              accel="1.5" 
+              decel="4.0" 
+              sigma="0.5" 
+              length="12.0" 
+              minGap="3.0" 
+              maxSpeed="15.0" 
+              color="orange"
+              emissionClass="HBEFA4/PC_petrol_Euro-4"/>
+
+       <vType id="camion" 
+              vClass="truck" 
+              accel="1.5" 
+              decel="4.0" 
+              sigma="0.5" 
+              length="12.0" 
+              minGap="3.0" 
+              maxSpeed="15.0" 
+              color="orange"
+              emissionClass="HBEFA4/PC_diesel_Euro-4"/>
+
+       
+    
+</additional>

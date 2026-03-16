@@ -412,6 +412,58 @@
             }
         }
 
+        async function getRoadsSanchoElFuerte(){
+
+            const socket = new WebSocket(window.endPoint+'ws/getRoadsSanchoElFuerte');
+            socket.onopen = () => {
+                console.log('Conectado al servidor');
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.mensaje){
+                    messageWebsocket(data);
+                    return;
+                }
+                
+                crearLaneString(data);
+            }
+        }
+
+        async function runSimulationEmissions(){
+
+            const socket2 = new WebSocket(window.endPoint+'ws/simulationEmissions');
+            socket2.onopen = () => {
+                console.log('Conectado al servidor');
+            };
+
+            socket2.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.mensaje){
+                    messageWebsocket(data);
+                    return;
+                }
+                
+
+
+            }
+        }
+
+
+        // function loadCzml(){
+        //     // Cargamos el archivo CZML
+        //     viewer.dataSources.add(Cesium.CzmlDataSource.load('ruta/al/archivo.czml'))
+        //     .then(function(dataSource) {
+        //         // Una vez cargado, puedes centrar la cámara en los datos
+        //         viewer.zoomTo(dataSource);
+        //     })
+        //     .catch(function(error) {
+        //         // Siempre es bueno manejar posibles errores de carga
+        //         console.error("Error al cargar el CZML:", error);
+        //     });
+        // }
+
+
         // Run simulation websocket
         async function runSimulationWebsocket() {
             if (!bounds && window.zonaSnachoFuerte==0) return;
@@ -547,7 +599,7 @@
                     });
                     if (entidadEncontrada)
                         window.viewer.entities.remove(entidadEncontrada)
-                    console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado.id)
+                    console.log("Vehiculo elimnado de la simulacion" + data.vehiculo_finalizado)
                 }
 
                 if (data.vehiculo){
@@ -623,6 +675,8 @@
                     }
                 }
 
+                
+
                 if (data.stats){
                     mensaje=data.stats
                     document.getElementById('simulationStats').innerHTML = mensaje + "<br>";
@@ -654,26 +708,19 @@
         }
 
         function testConnectionProxy(){
-            // Antes: const socket = new WebSocket('ws://localhost:8001/ws/status');
-            // Ahora (vía Nginx):
             socket = new WebSocket(window.endPoint + 'ws/status');
-            // socket = new WebSocket('ws://localhost:8001/ws/status');
             document.getElementById('messages-websocket').innerHTML += "Conectando al servidor...<br/>";
-            
 
             socket.onopen = function(e) {
                 console.log("[open] Conexión establecida a través de Nginx");
-                document.getElementById('messages-websocket').innerHTML += "Conexión establecida a través de Nginx<br/>";
+                document.getElementById('messages-websocket').innerHTML += "Conexión establecida a través de <b>Nginx</b><br/>";
             };
 
             socket.onmessage = function(event) {
                 console.log(`[message] Datos recibidos: ${event.data}`);
-                document.getElementById('messages-websocket').innerHTML += "Datos recibidos: " + event.data + "<br/>";
+                document.getElementById('messages-websocket').innerHTML += "<b>Datos recibidos:</b> " + event.data + "<br/>";
             };
         }
 
 
-        function loadCzml(){
-            viewer.dataSources.add(Cesium.CzmlDataSource.load('data/datos_parking2.czml'));
-        }
         

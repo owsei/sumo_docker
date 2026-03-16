@@ -8,12 +8,12 @@ services:
     environment:
       - SUMO_HOME=/usr/share/sumo
     ports:
-      - "8001:8000"
+      - "8000:8000"
     stdin_open: true
     tty: true
     networks:
       - fiware
-
+  
   nginx_server:
     hostname: nginx
     container_name: nginx
@@ -30,3 +30,4 @@ services:
 networks:
   fiware:
     driver: bridge
+    
