@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Create a gradient line with dasharray using an expression</title>
+    <meta property="og:description" content="Use the line-gradient and line-dasharray paint properties together to create a dashed line with gradient colors." />
+    <meta charset='utf-8'>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.css' />
+    <script src='https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.js'></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        html, body, #map { height: 100%; }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+
+<script>
+    
+    window.endPoint= "http://localhost:8001"
+
+    const map = (window.map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://tiles.openfreemap.org/styles/bright',
+        center: [-1.652673,42.805925],
+        zoom: 15
+    }));
+
+    map.on('load', async () => {
+        // Llamada al backend de FastAPI
+        const response = await fetch(window.endPoint + '/get-traffic-data');
+        const geojsonData = await response.json();
+
+        map.addSource('sumo-source', {
+            type: 'geojson',
+            data: geojsonData // Pasamos los datos recibidos de la API
+        });
+
+        map.addLayer({
+            id: 'capa-dinamica',
+            type: 'line',
+            source: 'sumo-source',
+            paint: {
+                'line-width': 3,
+                'line-color': [
+                    'interpolate',
+                    ['linear'],
+                    ['get', '0', ['get', 'co2_por_tiempo']], // Empezamos en el segundo 0
+                    0, '#ffffff',
+                    5000, '#fff000',
+                    10000, '#0000ff',
+                    15000, '#ff00ff'
+                ]
+            }
+        });
+
+        // Lógica de animación (igual que antes)
+        let time = 0;
+        setInterval(() => {
+            time = (time + 10) % 7200;
+            const timeKey = time.toString();
+            console.log("Buscando datos para el segundo:", timeKey);
+            map.setPaintProperty('capa-dinamica', 'line-color', [
+                'interpolate',
+                ['linear'],
+                ['get', time.toString(), ['get', 'co2_por_tiempo']],
+                0, '#ffffff',
+                5000, '#fff000',
+                10000, '#0000ff',
+                15000, '#ff00ff'
+            ]);
+        }, 1000);
+    });
+</script>
+</body>
+</html>

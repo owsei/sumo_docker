@@ -52,6 +52,19 @@ class  MensajeSocket(BaseModel):
     color: str
     tipo: str
 
+def operative_system_detect():
+    operativeSytemIsLinux= 1 if platform.system()=="Linux" else 0
+    if operativeSytemIsLinux==1:
+       sumo_home = "/usr/share/sumo"
+       ruta_output= r"/tmp/output"
+    else:
+       sumo_home = r"C:\Proyectos\01_sumo-1.26.0"
+       ruta= r"C:\Proyectos\twin-sumo-output\red_carreteras"
+       ruta_output= r"C:\Proyectos\twin-sumo-output\output"
+
+    return operativeSytemIsLinux,sumo_home,ruta,ruta_output
+
+
 def download_osm_data(bbox: BoundingBox, output_path: str):
     """Descarga directa de Overpass API para evitar errores de osmGet.py"""
     print("Descargando datos de OSM")
@@ -229,6 +242,53 @@ def convertirEmissionsXmlToParquet(ruta_emissions,ruta_parquet,rootLabel='interv
         print(f"Error al ejecutar SUMO: {e}")
         raise HTTPException(status_code=500, detail=f"Error al ejecutar SUMO: {e}")
 
+def convertirTrafficXmlToParquet(ruta_emissions,ruta_parquet,rootLabel='interval',nestLabel='edge'):
+    try:
+        tree = ET.parse(ruta_emissions)
+        root = tree.getroot()
+
+        lista_final = []
+
+        # 2. Recorrer cada intervalo (el padre)
+        for interval in root.findall(rootLabel):
+            # Extraemos los datos del tiempo
+            inicio = interval.get('begin')
+            fin = interval.get('end')
+            
+            # 3. Recorrer cada edge dentro de ese intervalo (el hijo)
+            for edge in interval.findall(nestLabel):
+                # Copiamos todos los atributos del edge (id, CO2, fuel, etc.)
+                datos_fila = edge.attrib.copy()
+                
+                # Añadimos la información del tiempo del padre a esta fila
+                datos_fila['interval_begin'] = inicio
+                datos_fila['interval_end'] = fin
+                
+                lista_final.append(datos_fila)
+
+                # 4. Crear el DataFrame
+        df = pd.DataFrame(lista_final)
+        # 5. Limpieza de datos (Crucial para Cesium y análisis)
+        # Convertimos a números lo que debe ser número
+        cols_numericas = [c for c in df.columns if c not in ['id', 'interval_begin', 'interval_end']]
+        for col in cols_numericas:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Aseguramos que los tiempos también sean numéricos para filtrar en el mapa
+        df['interval_begin'] = pd.to_numeric(df['interval_begin'])
+        df['interval_end'] = pd.to_numeric(df['interval_end'])
+
+        # 6. Guardar a Parquet
+        # Mantenemos el 'id' intacto para que Cesium pueda hacer el JOIN con tu red .js o .geojson
+        df.to_parquet(ruta_parquet, engine='pyarrow', index=False)
+        
+        print(f"Éxito: Se han procesado {len(df)} registros de edges.")
+
+    except Exception as e:
+        print(f"Error al ejecutar SUMO: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al ejecutar SUMO: {e}")
+
+
 #---------------------------------------------------------------------------------------------------------
 
 
@@ -286,13 +346,15 @@ def parse_sumo_emissions_lane(file_path):
 # ******************FIN FUNCIONES DE PARSEO DE LOS RESULTADOS DE EMISIONES DE SUMO**********************#
 
 # RUTA PARA EJECUTAR LA SIMULACION DE SUMO Y OBTENER LOS RESULTADOS DE EMISIONES Y TRAFICO EN CALLES Y CARRILES
-@app.get("/simulationEmissions")
-async def simulationEmissions():
+@app.websocket("/ws/simulationEmissions")
+async def simulationEmissions(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_json({"mensaje": "Iniciando simulacion de Sancho el Fuerte.🚩"})
     # DETERMINA EL SISTEMA OPERATIVO SOBRE EL QUE SE EJECUTA LA APLICACION
     operativeSytemIsLinux= 1 if platform.system()=="Linux" else 0
     if operativeSytemIsLinux==1:
        sumo_home = "/usr/share/sumo"
-       ruta_output= r"/tmp/twin-sumo-output/output"
+       ruta_output= r"/tmp/output"
     else:
        sumo_home = r"C:\Proyectos\01_sumo-1.26.0"
        ruta= r"C:\Proyectos\twin-sumo-output\red_carreteras"
@@ -366,31 +428,43 @@ async def simulationEmissions():
                 sumo = os.path.join(sumo_home, "bin", "sumo")  # sin GUI
                 
             print("Lanzando simulación con SUMO")
+            await websocket.send_json({"mensaje": "Lanzando simulación con SUMO de Sancho el Fuerte.🚀"})
             try:
                 subprocess.run([
                         sumo,
                         "-c", config_file,
                         "-b", "0",
-                        "-e", "7200",
+                        "-e", "7200",  # Simular 7200 segundos
                         # "-n", net_file,
                         # "-r", route_file,
                         "-v", "true",
                         # "--full-output", full_output_file
                     ], check=True,capture_output=True, text=True)
 
-                ruta_output= r"C:\Proyectos\twin-sumo-output\output"
-                ruta_edgeEmissions = os.path.join(ruta_output, "edgeEmissions.xml")
+                await websocket.send_json({"mensaje": "Simulación con SUMO finalizada correctamente.✅"})   
+                # SI EL FICHERO EXISTE, LO BORRA PARA EVITAR PROBLEMAS DE PARSEO
                 ruta_edgeEmissions_p = os.path.join(ruta_output, "edgeEmissions.parquet")
-                convertirEmissionsXmlToParquet(ruta_edgeEmissions,ruta_edgeEmissions_p)
-                print(" Fichero de edgeEmissions.parquet creado")
-                
+                if os.path.exists(ruta_edgeEmissions_p):
+                    print("Delete existing parquet file")
+                    os.remove(ruta_edgeEmissions_p)
+
+                convertirEmissionsXmlToParquet(os.path.join(ruta_output, "edgeEmissions.xml"),os.path.join(ruta_output, "edgeEmissions.parquet"))
+                await websocket.send_json({"mensaje": "Creado fichero parquet de Emisiones de Sancho el Fuerte.🗄️"})   
+
+                # SI EL FICHERO EXISTE, LO BORRA PARA EVITAR PROBLEMAS DE PARSEO
+                ruta_traffic_p = os.path.join(ruta_output, "edgeTraffic.parquet")
+                if os.path.exists(ruta_traffic_p):
+                    print("Delete existing parquet file")
+                    os.remove(ruta_traffic_p)
+
+                convertirTrafficXmlToParquet(os.path.join(ruta_output, "edgeTraffic.xml"),os.path.join(ruta_output, "edgeTraffic.parquet"))
+                print(" Fichero de edgeTraffic.parquet creado")
+                await websocket.send_json({"mensaje": "Creado fichero parquet de Tráfico de Sancho el Fuerte.🗄️"})
 
 
             except Exception as e:
                 print(f"Error al ejecutar SUMO: {e}")
                 raise HTTPException(status_code=500, detail=f"Error al ejecutar SUMO: {e}")
-            finally:
-                print("Finalizada la simulación con SUMO")
 
         except Exception as e:
             print(f"Error en la simulación: {e}")
@@ -398,9 +472,7 @@ async def simulationEmissions():
         
         finally:
             print("Finalizada la simulación con SUMO")
-
-
-
+            await websocket.send_json({"mensaje": "Finalizada la simulación con SUMO de Sancho el Fuerte.✅"})
 
 @app.websocket("/ws/getRoadsSanchoElFuerte")
 async def getRoadsSanchoElFuerte(websocket: WebSocket):
@@ -418,7 +490,7 @@ async def getRoadsSanchoElFuerte(websocket: WebSocket):
     if operativeSytemIsLinux==0:
         net_file = "/tmp/zona-sancho-el-fuerte.net.xml"
     else:
-        net_file = "C:\\Proyectos\\SUMO_DOCKER\\red_carreteras\\zona-sancho-el-fuerte.net.xml"
+        net_file = r"C:\Proyectos\twin-sumo-output\red_carreteras\zona-sancho-el-fuerte.net.xml"
 
     await websocket.send_json({"mensaje": "Iniciando descarga de red de Sancho el fuerte."})
     try:
@@ -433,55 +505,155 @@ async def getRoadsSanchoElFuerte(websocket: WebSocket):
         await websocket.send_json({"mensaje": "Envío de calles de Sancho el fuerte finalizado correctamente.👍"})
     
     finally:
+        await websocket.send_json({"mensaje": "Enviando calles de Sancho el fuerte."})
         await websocket.close()
 
 
-def generar_czml(parquet_path, czml_path):
-    df = pd.read_parquet(parquet_path)
+def obtener_coords_calle(net,edge_id):
+    # Esta función debe devolver las coordenadas de la calle (edge) dada su ID
+    # Puedes usar sumolib para leer la red y obtener las coordenadas de cada edge
+    # Ejemplo:
+    edge = net.getEdge(edge_id)
+    shape = edge.getShape()
+    coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+    # Cesium espera un array plano de [lon, lat, alt, lon, lat, alt, ...]
+    coords_planas = []
+    for lon, lat in coords:
+        coords_planas.extend([lon, lat, 0])  # Altura 0 para clamping to ground
+    return coords_planas
+
+
+@app.get("/getCzmlEmissions")
+def generar_czml_emisiones():
+    # 1. Leer datos del Parquet
+    operativeSytemIsLinux= 1 if platform.system()=="Linux" else 0
+    if operativeSytemIsLinux==1:
+       ruta_output= r"/tmp/output"
+       net_file = "/tmp/zona-sancho-el-fuerte.net.xml"
+    else:
+       ruta_output= r"C:\Proyectos\twin-sumo-output\output"
+       net_file = r"C:\Proyectos\twin-sumo-output\red_carreteras\zona-sancho-el-fuerte.net.xml"
+
+    net = sumolib.net.readNet(net_file)
+    ruta_edgeEmissions_p = os.path.join(ruta_output, "edgeEmissions.parquet")
+    if not os.path.exists(ruta_edgeEmissions_p):
+        raise HTTPException(status_code=404, detail="File edgeEmissions.parquet not found")
+
+
+    df = pd.read_parquet(ruta_edgeEmissions_p)
+    # Aseguramos que el tiempo esté en formato datetime
+    df['interval_begin'] = pd.to_numeric(df['interval_begin'])
     
-    # 1. El 'Document' es obligatorio en CZML
+    # 2. Configuración inicial del CZML
+    inicio_sim = "2026-03-16T08:00:00Z" # Ajusta a tu fecha real
+    final_sim = "2026-03-16T10:00:00Z"  # Ajusta a tu fecha real
     czml = [{
         "id": "document",
-        "name": "Simulacion SUMO",
-        "version": "1.0"
+        "version": "1.0",
+        "clock": {
+            "interval": f"{inicio_sim}/{final_sim}",
+            "currentTime": inicio_sim,
+            "multiplier": 1,
+                "range": "LOOP_STOP",
+                "step": "SYSTEM_CLOCK_MULTIPLIER"
+        }
     }]
 
-    # 2. Agrupamos por edge para crear una línea de tiempo por cada calle
+    # 3. Procesar cada calle (edge)
     for edge_id, group in df.groupby('id'):
+        rgba_list = []
         
-        # Creamos el paquete para este edge específico
-        packet = {
-            "id": str(edge_id),
-            "name": f"Edge {edge_id}",
+        # Ordenar por tiempo para que la evolución sea correcta
+        group = group.sort_values('interval_begin')
+        
+        for _, row in group.iterrows():
+            # Definir el tiempo para este punto (ISO8601)
+            # Sumamos los segundos de la simulación a la hora de inicio
+            time_iso = f"2026-03-16T08:00:{int(row['interval_begin']):02d}Z"
+            
+            # Lógica de color según CO2 (Verde a Rojo/Púrpura)
+            co2 = row['CO2_abs'] if row['CO2_abs'] is not None else 0 # Si no hay dato, asumimos 0
+            r, g, b = 0, 255, 0 # Default Verde
+            
+            if co2 > 1000 and co2 <= 5000:
+                r, g, b = 255, 165, 0 # Naranja
+                size = 3
+            elif co2 > 5000:
+                r, g, b = 255, 0, 0   # Rojo
+                size = 5
+            
+            # Añadir al array CZML: [tiempo, R, G, B, A]
+            rgba_list.extend([time_iso, r, g, b, 200])
+
+        # Crear el objeto de la calle
+        # Nota: Necesitas las coordenadas de la calle (positions) de tu red
+        calle_packet = {
+            "id": f"{edge_id}",
+            "name": f"Emisiones en {edge_id}",
             "polyline": {
-                "width": 5,
+                "positions": {
+                    "cartographicDegrees": obtener_coords_calle(net, edge_id) # Función que saque las coordenadas
+                },
                 "material": {
                     "solidColor": {
                         "color": {
-                            # Aquí definimos cómo cambia el color con el tiempo
-                            "rgba": [] 
+                            "rgba": rgba_list # AQUÍ está la magia del cambio de color
                         }
                     }
-                }
+                },
+                "width": size,
+                "clampToGround": True
             }
         }
+        czml.append(calle_packet)
+    
+    return czml
 
-        # 3. Llenamos la línea de tiempo (emisiones o densidad)
-        for fila in group.itertuples():
-            # Convertimos el tiempo de SUMO (segundos) a formato ISO8601 de Cesium
-            # Ej: "2023-10-27T10:00:00Z"
-            tiempo_iso = f"2026-03-13T00:00:{int(fila.interval_begin):02d}Z"
-            
-            # Ejemplo: Si el CO2 es alto, ponemos color rojo (255, 0, 0)
-            color = [255, 0, 0, 255] if fila.CO2_abs > 500 else [0, 255, 0, 255]
-            
-            packet["polyline"]["material"]["solidColor"]["color"]["rgba"].extend(
-                [tiempo_iso] + color
-            )
 
-        czml.append(packet)
+@app.get("/get-traffic-data")
+def get_traffic_data():
+    operativeSytemIsLinux= 1 if platform.system()=="Linux" else 0
+    if operativeSytemIsLinux==1:
+       ruta_output= r"/tmp/output"
+       net_file = "/tmp/zona-sancho-el-fuerte.net.xml"
+    else:
+       ruta_output= r"C:\Proyectos\twin-sumo-output\output"
+       net_file = r"C:\Proyectos\twin-sumo-output\red_carreteras\zona-sancho-el-fuerte.net.xml"
 
-    # 4. Guardar el resultado
-    with open(czml_path, "w") as f:
-        json.dump(czml, f)
+    
+    net = sumolib.net.readNet(net_file)
+    # 1. Leer el parquet (ajusta la ruta a tu archivo)
+    df = pd.read_parquet(os.path.join(ruta_output, "edgeEmissions.parquet"))
+    # 3. Pivotar los datos de CO2 como antes
+    df_pivot = df.pivot(index='id', columns='interval_begin', values='CO2_abs')
+    df_pivot.columns = [str(int(c)) for c in df_pivot.columns]
 
+    # 4. Crear el JSON final con geometría y datos de tráfico
+    features = []
+
+    for edge_id, row in df_pivot.iterrows():
+        edge = net.getEdge(edge_id)
+        shape = edge.getShape()
+        coords = [net.convertXY2LonLat(x, y) for x, y in shape]
+
+        feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": coords
+            },
+            "properties": {
+                "id": edge_id,
+                "nombre": edge.getName() or "Calle sin nombre",
+                "tipo": edge.getType(),
+                "velocidad_max": edge.getSpeed() * 3.6, # Convertir m/s a km/h
+                "carriles": edge.getLaneNumber(),
+                "co2_por_tiempo": row.dropna().to_dict() # Solo tiempos con datos de CO2
+            }
+        }
+        features.append(feature)
+    
+    return {
+        "type": "FeatureCollection",
+        "features": features
+    }
